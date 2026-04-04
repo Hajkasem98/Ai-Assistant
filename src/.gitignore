@@ -1,0 +1,28 @@
+
+# Visual Studio
+.vs/
+
+# .NET build files
+bin/
+obj/
+
+# Node packages
+node_modules/
+frontend/node_modules/
+
+# React builds
+frontend/dist/
+frontend/build/
+
+# Environment variables
+.env.*
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# for secrutity, to not include api keys
+appsettings.json
