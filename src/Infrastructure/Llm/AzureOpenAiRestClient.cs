@@ -13,12 +13,13 @@ namespace AiAssistant.Api.Infrastructure.Llm;
 /// - AzureOpenAI:ChatDeployment
 /// - AzureOpenAI:EmbeddingDeployment
 /// - AzureOpenAI:ApiVersion (optional)
+/// /// Minimal Azure OpenAI REST client (handles embeddings + chat)
 /// </summary>
 public sealed class AzureOpenAiRestClient : IEmbeddingClient, IChatCompletionClient
 {
-    private readonly IHttpClientFactory _http;
-    private readonly IConfiguration _config;
-    private readonly SystemTextJson _json;
+    private readonly IHttpClientFactory _http;      // Creates HttpClient instances
+    private readonly IConfiguration _config;        // Reads app settings (keys, endpoints)
+    private readonly SystemTextJson _json;          // JSON serializer options
 
     public AzureOpenAiRestClient(IHttpClientFactory http, IConfiguration config, SystemTextJson json)
     {
@@ -29,18 +30,20 @@ public sealed class AzureOpenAiRestClient : IEmbeddingClient, IChatCompletionCli
 
     public async Task<float[]> EmbedAsync(string input, CancellationToken ct)
     {
+        // Read config
         var endpoint = Require("AzureOpenAI:Endpoint").TrimEnd('/');
         var key = Require("AzureOpenAI:ApiKey");
         var deployment = Require("AzureOpenAI:EmbeddingDeployment");
         var apiVersion = _config["AzureOpenAI:ApiVersion"] ?? "2024-02-15-preview";
 
+        // Build API URL
         var url = $"{endpoint}/openai/deployments/{deployment}/embeddings?api-version={apiVersion}";
 
         var payload = new
         {
             input
         };
-
+        // Create HTTP request
         using var req = new HttpRequestMessage(HttpMethod.Post, url);
         req.Headers.Add("api-key", key);
         req.Content = new StringContent(JsonSerializer.Serialize(payload, _json.Options), Encoding.UTF8, "application/json");
@@ -52,6 +55,7 @@ public sealed class AzureOpenAiRestClient : IEmbeddingClient, IChatCompletionCli
         if (!resp.IsSuccessStatusCode)
             throw new InvalidOperationException($"Azure OpenAI embeddings failed: {(int)resp.StatusCode} {resp.ReasonPhrase}. Body: {body}");
 
+        // Parse embedding array from response
         using var doc = JsonDocument.Parse(body);
         var emb = doc.RootElement
             .GetProperty("data")[0]
@@ -62,7 +66,7 @@ public sealed class AzureOpenAiRestClient : IEmbeddingClient, IChatCompletionCli
 
         return emb;
     }
-
+    /// Generate chat completion (AI answer)
     public async Task<string> CompleteAsync(IReadOnlyList<LlmChatMessage> messages, CancellationToken ct)
     {
         var endpoint = Require("AzureOpenAI:Endpoint").TrimEnd('/');
@@ -80,6 +84,7 @@ public sealed class AzureOpenAiRestClient : IEmbeddingClient, IChatCompletionCli
             Total: 20,500 tokens ? within 128k
          */
 
+        // Request payload (messages + settings)
         var payload = new
         {
             messages = messages.Select(m => new { role = m.Role, content = m.Content }),
@@ -98,10 +103,12 @@ public sealed class AzureOpenAiRestClient : IEmbeddingClient, IChatCompletionCli
         if (!resp.IsSuccessStatusCode)
             throw new InvalidOperationException($"Azure OpenAI chat failed: {(int)resp.StatusCode} {resp.ReasonPhrase}. Body: {body}");
 
+        // Extract AI response text
         using var doc = JsonDocument.Parse(body);
         return ExtractChatContent(doc.RootElement);
     }
 
+    /// Extract text from OpenAI response (handles multiple formats)
     private static string ExtractChatContent(JsonElement root)
     {
         if (!root.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0)
@@ -136,6 +143,7 @@ public sealed class AzureOpenAiRestClient : IEmbeddingClient, IChatCompletionCli
         return string.Empty;
     }
 
+    /// Recursively extract text from JSON (handles string/array/object)
     private static string ExtractText(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.String)
@@ -180,6 +188,7 @@ public sealed class AzureOpenAiRestClient : IEmbeddingClient, IChatCompletionCli
         return string.Empty;
     }
 
+    /// Get required config value or throw error
     private string Require(string key)
         => _config[key] ?? throw new InvalidOperationException($"Missing configuration: {key}");
 
