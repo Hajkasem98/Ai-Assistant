@@ -16,6 +16,7 @@ import {
     PanelLeftClose,
     PanelLeftOpen,
     LoaderCircle,
+    Plus,
 } from "lucide-react";
 
 type Role = "user" | "assistant";
@@ -52,8 +53,9 @@ type ChatSession = {
     messages: Message[];
 };
 
-const STORAGE_KEY = "mesta-ai-chat-history-tailwind-final-v3";
+const STORAGE_KEY = "mesta-ai-chat-history-tailwind-final-v5";
 const DEFAULT_CHAT_TITLE = "Ny chat";
+const MAX_TEXTAREA_HEIGHT = 180;
 
 function uid() {
     return Math.random().toString(16).slice(2) + Date.now().toString(16);
@@ -131,6 +133,20 @@ function buildRequestHistory(messages: Message[]): ApiMessage[] {
         .slice(-6);
 }
 
+function useIsDesktop() {
+    const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 1024);
+
+    useEffect(() => {
+        const mq = window.matchMedia("(min-width: 1024px)");
+        const handler = () => setIsDesktop(mq.matches);
+        handler();
+        mq.addEventListener("change", handler);
+        return () => mq.removeEventListener("change", handler);
+    }, []);
+
+    return isDesktop;
+}
+
 async function streamBackend(
     req: ChatRequest,
     onChunk: (chunk: string) => void
@@ -202,6 +218,7 @@ export default function App() {
     const { accounts } = useMsal();
     const user = accounts[0];
     const firstName = user?.name?.split(" ")[0] || "der";
+    const isDesktop = useIsDesktop();
 
     const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -209,11 +226,13 @@ export default function App() {
     const [isSending, setIsSending] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [composerHeight, setComposerHeight] = useState(132);
 
     const audioMapRef = useRef<Map<string, HTMLAudioElement>>(new Map());
     const generatingMapRef = useRef<Map<string, boolean>>(new Map());
     const inputRef = useRef<HTMLTextAreaElement | null>(null);
     const listRef = useRef<HTMLDivElement | null>(null);
+    const composerRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         try {
@@ -248,6 +267,33 @@ export default function App() {
         }
     }, [chatSessions]);
 
+    useEffect(() => {
+        const textarea = inputRef.current;
+        if (!textarea) return;
+
+        textarea.style.height = "auto";
+        const nextHeight = Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT);
+        textarea.style.height = `${nextHeight}px`;
+        textarea.style.overflowY =
+            textarea.scrollHeight > MAX_TEXTAREA_HEIGHT ? "auto" : "hidden";
+    }, [input]);
+
+    useEffect(() => {
+        const node = composerRef.current;
+        if (!node) return;
+
+        const updateHeight = () => {
+            setComposerHeight(node.offsetHeight);
+        };
+
+        updateHeight();
+
+        const observer = new ResizeObserver(() => updateHeight());
+        observer.observe(node);
+
+        return () => observer.disconnect();
+    }, [input, isSending, isDesktop]);
+
     const activeChat = useMemo(
         () => chatSessions.find((chat) => chat.id === activeChatId) ?? null,
         [chatSessions, activeChatId]
@@ -263,7 +309,7 @@ export default function App() {
             top: listRef.current.scrollHeight,
             behavior: "smooth",
         });
-    }, [activeChatId, chatSessions]);
+    }, [activeChatId, chatSessions, composerHeight]);
 
     const focusComposer = () => {
         window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -448,6 +494,9 @@ export default function App() {
         ? "lg:grid-cols-[88px_minmax(0,1fr)]"
         : "lg:grid-cols-[300px_minmax(0,1fr)]";
 
+    const scrollPaddingBottom = isDesktop ? 96 : composerHeight + 84;
+    const floatingNewChatBottom = isDesktop ? 24 : composerHeight + 20;
+
     return (
         <div className="min-h-screen bg-[#F5F1EA] text-[#292220]">
             {sidebarOpen && (
@@ -459,7 +508,7 @@ export default function App() {
             )}
 
             <div className="mx-auto flex min-h-screen max-w-[1440px] flex-col px-4 py-4 lg:px-6">
-                <header className="rounded-[28px] border border-[#E7D8C8] bg-white px-5 py-4 shadow-[0_10px_30px_rgba(15,23,61,0.05)]">
+                <header className="sticky top-4 z-40 rounded-[28px] border border-[#E7D8C8] bg-white/95 px-5 py-4 shadow-[0_10px_30px_rgba(15,23,61,0.05)] backdrop-blur supports-[backdrop-filter]:bg-white/90">
                     <div className="flex items-center justify-between gap-4">
                         <div className="flex min-w-0 items-center gap-3">
                             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#E7D8C8] bg-[#FFF8F2]">
@@ -501,13 +550,11 @@ export default function App() {
                     </div>
                 </header>
 
-                <div
-                    className={`mt-5 grid flex-1 grid-cols-1 gap-5 ${gridClass}`}
-                >
+                <div className={`mt-5 grid flex-1 grid-cols-1 gap-5 ${gridClass}`}>
                     <aside
                         className={[
                             "z-40 rounded-[28px] border border-[#E7D8C8] bg-white shadow-[0_10px_30px_rgba(15,23,61,0.04)] transition-all duration-300",
-                            "lg:static lg:block",
+                            "lg:sticky lg:top-[108px] lg:block lg:max-h-[calc(100vh-132px)]",
                             sidebarOpen
                                 ? "fixed inset-y-24 left-4 w-[88vw] max-w-[320px] overflow-hidden"
                                 : "hidden lg:block",
@@ -516,9 +563,7 @@ export default function App() {
                     >
                         <div className="border-b border-[#F0E5D9] p-4">
                             <div
-                                className={`flex items-center ${sidebarCollapsed
-                                    ? "justify-center"
-                                    : "justify-between"
+                                className={`flex items-center ${sidebarCollapsed ? "justify-center" : "justify-between"
                                     } gap-2`}
                             >
                                 {!sidebarCollapsed && (
@@ -533,15 +578,9 @@ export default function App() {
 
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        setSidebarCollapsed((prev) => !prev)
-                                    }
+                                    onClick={() => setSidebarCollapsed((prev) => !prev)}
                                     className="hidden h-11 w-11 items-center justify-center rounded-2xl border border-[#D7DDE8] bg-white text-[#000099] transition hover:bg-[#F5F8FF] lg:inline-flex"
-                                    title={
-                                        sidebarCollapsed
-                                            ? "Åpne sidepanel"
-                                            : "Lukk sidepanel"
-                                    }
+                                    title={sidebarCollapsed ? "Åpne sidepanel" : "Lukk sidepanel"}
                                 >
                                     {sidebarCollapsed ? (
                                         <PanelLeftOpen size={18} />
@@ -553,25 +592,20 @@ export default function App() {
                         </div>
 
                         <div
-                            className={`max-h-[calc(100vh-220px)] overflow-y-auto p-4 ${sidebarCollapsed ? "px-2" : ""
-                                }`}
+                            className={`overflow-y-auto p-4 ${sidebarCollapsed ? "px-2" : ""
+                                } lg:max-h-[calc(100vh-220px)]`}
                         >
                             {sidebarCollapsed ? (
                                 <div className="space-y-2">
                                     {chatSessions.slice(0, 12).map((chat) => {
                                         const isActive = chat.id === activeChatId;
-                                        const label = chat.title
-                                            .trim()
-                                            .charAt(0)
-                                            .toUpperCase();
+                                        const label = chat.title.trim().charAt(0).toUpperCase();
 
                                         return (
                                             <button
                                                 key={chat.id}
                                                 type="button"
-                                                onClick={() =>
-                                                    setActiveChatId(chat.id)
-                                                }
+                                                onClick={() => setActiveChatId(chat.id)}
                                                 className={[
                                                     "flex h-12 w-full items-center justify-center rounded-2xl border text-sm font-semibold transition",
                                                     isActive
@@ -602,11 +636,8 @@ export default function App() {
                                                 const preview =
                                                     [...chat.messages]
                                                         .reverse()
-                                                        .find(
-                                                            (m) =>
-                                                                m.role ===
-                                                                "assistant"
-                                                        )?.content ||
+                                                        .find((m) => m.role === "assistant")
+                                                        ?.content ||
                                                     chat.messages[0]?.content ||
                                                     "Tom samtale";
 
@@ -639,9 +670,7 @@ export default function App() {
 
                                                             <div className="flex items-center gap-2">
                                                                 <span className="shrink-0 text-[11px] text-[#8A8077]">
-                                                                    {formatTime(
-                                                                        chat.updatedAt
-                                                                    )}
+                                                                    {formatTime(chat.updatedAt)}
                                                                 </span>
 
                                                                 <span
@@ -650,9 +679,7 @@ export default function App() {
                                                                     className="flex h-7 w-7 items-center justify-center rounded-full text-[#8A8077] hover:bg-[#F1E6DB] hover:text-[#FF6600]"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        deleteChat(
-                                                                            chat.id
-                                                                        );
+                                                                        deleteChat(chat.id);
                                                                     }}
                                                                     onKeyDown={(e) => {
                                                                         if (
@@ -660,9 +687,7 @@ export default function App() {
                                                                             e.key === " "
                                                                         ) {
                                                                             e.preventDefault();
-                                                                            deleteChat(
-                                                                                chat.id
-                                                                            );
+                                                                            deleteChat(chat.id);
                                                                         }
                                                                     }}
                                                                 >
@@ -684,15 +709,14 @@ export default function App() {
                         </div>
                     </aside>
 
-                    <main className="flex min-w-0 flex-col">
+                    <main className="relative flex min-w-0 flex-col">
                         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                                 <h1 className="text-[28px] font-semibold tracking-tight text-[#000099]">
                                     Mesta AI Assistent
                                 </h1>
                                 <p className="mt-1 text-sm text-[#6B625A]">
-                                    Spør om prosedyrer, HMS, inspeksjoner og
-                                    rapportering.
+                                    Spør om prosedyrer, HMS, inspeksjoner og rapportering.
                                 </p>
                             </div>
                         </div>
@@ -701,6 +725,7 @@ export default function App() {
                             <div
                                 ref={listRef}
                                 className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8"
+                                style={{ paddingBottom: scrollPaddingBottom }}
                             >
                                 {isEmpty ? (
                                     <EmptyState
@@ -720,80 +745,94 @@ export default function App() {
                                                 generatingMapRef={generatingMapRef}
                                                 isLoading={
                                                     isSending &&
-                                                    message.role ===
-                                                    "assistant" &&
+                                                    message.role === "assistant" &&
                                                     message.content.trim() === ""
                                                 }
                                             />
-                                        ))}
+                                        ))}                           
                                     </div>
                                 )}
                             </div>
 
-                            <div className="border-t border-[#F0E5D9] bg-white p-4">
-                                <div className="flex items-end gap-3 rounded-[24px] border border-[#E7D8C8] bg-[#FBF7F2] p-3">
-                                    <div className="flex flex-1 items-start gap-3">
-                                 
+                            {!isEmpty && (
+                                <button
+                                    type="button"
+                                    onClick={startNewChat}
+                                    className="fixed right-4 z-20 inline-flex items-center gap-2 rounded-full border border-[#D7DDE8] bg-white px-4 py-3 text-sm font-semibold text-[#000099] shadow-[0_10px_24px_rgba(15,23,61,0.12)] transition hover:bg-[#F5F8FF] lg:right-8"
+                                    style={{ bottom: floatingNewChatBottom }}
+                                >
+                                    <Plus size={16} />
+                                    Ny chat
+                                </button>
+                            )}
 
-                                        <textarea
-                                            ref={inputRef}
-                                            value={input}
-                                            onChange={(e) =>
-                                                setInput(e.target.value)
-                                            }
-                                            onKeyDown={onKeyDown}
-                                            placeholder={
-                                                isEmpty
-                                                    ? "Still et spørsmål..."
-                                                    : "Skriv en oppfølging..."
-                                            }
-                                            rows={1}
+                            <div
+                                ref={composerRef}
+                                className="fixed bottom-0 left-0 right-0 z-20 border-t border-[#F0E5D9] bg-white/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-white/85 lg:static lg:border-t lg:bg-white lg:p-4"
+                                style={{
+                                    paddingBottom: isDesktop
+                                        ? 16
+                                        : "max(16px, env(safe-area-inset-bottom))",
+                                }}
+                            >
+                                <div className="mx-auto w-full max-w-4xl">
+                                    <div className="flex items-end gap-3 rounded-[24px] border border-[#E7D8C8] bg-[#FBF7F2] p-3">
+                                        <div className="flex flex-1 items-start gap-3">
+                                            <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF6FC] text-sm font-semibold text-[#000099]">
+                                                <Search size={18} />
+                                            </div>
+
+                                            <textarea
+                                                ref={inputRef}
+                                                value={input}
+                                                onChange={(e) => setInput(e.target.value)}
+                                                onKeyDown={onKeyDown}
+                                                placeholder={
+                                                    isEmpty
+                                                        ? "Still et spørsmål..."
+                                                        : "Skriv en oppfølging..."
+                                                }
+                                                rows={1}
+                                                disabled={isSending}
+                                                className="min-h-[28px] max-h-[180px] w-full resize-none border-none bg-transparent text-[15px] text-[#292220] outline-none placeholder:text-[#8A8077]"
+                                            />
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                try {
+                                                    const text = await speechToText();
+                                                    setInput(text);
+                                                } catch (err) {
+                                                    console.error("Speech error:", err);
+                                                }
+                                            }}
                                             disabled={isSending}
-                                            className="min-h-[28px] max-h-32 w-full resize-none border-none bg-transparent text-[15px] text-[#292220] outline-none placeholder:text-[#8A8077]"
-                                        />
+                                            className="flex h-11 w-11 items-center justify-center rounded-full border border-[#D7DDE8] bg-white text-lg text-[#000099] hover:bg-[#F5F8FF] disabled:cursor-not-allowed disabled:opacity-50"
+                                            title="Tale til tekst"
+                                        >
+                                            <Mic size={20} />
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => void send()}
+                                            disabled={!canSend}
+                                            className="flex h-11 min-w-[52px] items-center justify-center rounded-2xl bg-[#FF6600] px-4 text-sm font-semibold text-white transition hover:bg-[#e45b00] disabled:cursor-not-allowed disabled:opacity-50"
+                                            title={isSending ? "Henter svar..." : "Send"}
+                                        >
+                                            {isSending ? (
+                                                <LoaderCircle size={18} className="animate-spin" />
+                                            ) : (
+                                                <Send size={16} />
+                                            )}
+                                        </button>
                                     </div>
 
-                                    <button
-                                        type="button"
-                                        onClick={async () => {
-                                            try {
-                                                const text =
-                                                    await speechToText();
-                                                setInput(text);
-                                            } catch (err) {
-                                                console.error(
-                                                    "Speech error:",
-                                                    err
-                                                );
-                                            }
-                                        }}
-                                        disabled={isSending}
-                                        className="flex h-11 w-11 items-center justify-center rounded-full border border-[#D7DDE8] bg-white text-lg text-[#000099] hover:bg-[#F5F8FF] disabled:cursor-not-allowed disabled:opacity-50"
-                                        title="Tale til tekst"
-                                    >
-                                        <Mic size={20} />
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => void send()}
-                                        disabled={!canSend}
-                                        className="flex h-11 min-w-[52px] items-center justify-center rounded-2xl bg-[#FF6600] px-4 text-sm font-semibold text-white transition hover:bg-[#e45b00] disabled:cursor-not-allowed disabled:opacity-50"
-                                        title={isSending ? "Henter svar..." : "Send"}
-                                    >
-                                        {isSending ? (
-                                            <LoaderCircle
-                                                size={18}
-                                                className="animate-spin"
-                                            />
-                                        ) : (
-                                            <Send size={16} />
-                                        )}
-                                    </button>
-                                </div>
-
-                                <div className="mt-2 text-center text-xs text-[#8A8077]">
-                                    Enter sender · Shift+Enter ny linje
+                                    <div className="mt-2 text-center text-xs text-[#8A8077]">
+                                        Enter sender · Shift+Enter ny linje
+                                    </div>
                                 </div>
                             </div>
                         </section>
@@ -811,6 +850,37 @@ function EmptyState({
     firstName: string;
     onPick: (text: string) => void;
 }) {
+    const [faqOpen, setFaqOpen] = useState(false);
+    const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
+
+    const faqItems = [
+        {
+            title: "Hvordan opprette en innkjøpsordre?",
+            subtitle: "Basert på dokumenter i SharePoint",
+            value: "Hvordan opprette en innkjøpsordre?",
+        },
+        {
+            title: "Hvordan registrere avvik?",
+            subtitle: "Basert på dokumenter i SharePoint",
+            value: "Hvordan registrere avvik?",
+        },
+        {
+            title: "Hva er de viktigste HMS-kravene?",
+            subtitle: "Basert på dokumenter i SharePoint",
+            value: "Hva er de viktigste HMS-kravene?",
+        },
+        {
+            title: `Hva kan du hjelpe meg med, ${firstName}?`,
+            subtitle: "Få en oversikt over funksjoner og bruk",
+            value: "Hva kan du hjelpe meg med?",
+        },
+    ];
+
+    const handlePick = (value: string) => {
+        setSelectedQuestion(value);
+        onPick(value);
+    };
+
     return (
         <div className="mx-auto mt-6 flex max-w-4xl flex-col items-center text-center">
             <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl border border-[#E7D8C8] bg-[#FFF8F2]">
@@ -833,39 +903,40 @@ function EmptyState({
             </p>
 
             <div className="mt-8 w-full max-w-3xl text-left">
-                <div className="mb-3 text-lg font-semibold text-[#000099]">
-                    Ofte stilte spørsmål
-                </div>
+                <button
+                    type="button"
+                    onClick={() => setFaqOpen((prev) => !prev)}
+                    className="flex w-full items-center justify-between rounded-[20px] border border-[#E7D8C8] bg-white px-4 py-3 text-left transition hover:bg-[#FBF7F2]"
+                >
+                    <div>
+                        <div className="text-base font-semibold text-[#000099]">
+                            Ofte stilte spørsmål
+                        </div>
+                        <div className="mt-1 text-sm text-[#6B625A]">
+                            Trykk for å {faqOpen ? "skjule" : "vise"} forslag
+                        </div>
+                    </div>
 
-                <div className="space-y-3">
-                    <SuggestionCard
-                        title="Hvordan opprette en innkjøpsordre?"
-                        subtitle="Basert på dokumenter i SharePoint"
-                        onClick={() =>
-                            onPick("Hvordan opprette en innkjøpsordre?")
-                        }
+                    <ChevronRight
+                        size={20}
+                        className={`text-[#000099] transition-transform duration-200 ${faqOpen ? "rotate-90" : ""
+                            }`}
                     />
+                </button>
 
-                    <SuggestionCard
-                        title="Hvordan registrere avvik?"
-                        subtitle="Basert på dokumenter i SharePoint"
-                        onClick={() => onPick("Hvordan registrere avvik?")}
-                    />
-
-                    <SuggestionCard
-                        title="Hva er de viktigste HMS-kravene?"
-                        subtitle="Basert på dokumenter i SharePoint"
-                        onClick={() =>
-                            onPick("Hva er de viktigste HMS-kravene?")
-                        }
-                    />
-
-                    <SuggestionCard
-                        title={`Hva kan du hjelpe meg med, ${firstName}?`}
-                        subtitle="Få en oversikt over funksjoner og bruk"
-                        onClick={() => onPick("Hva kan du hjelpe meg med?")}
-                    />
-                </div>
+                {faqOpen && (
+                    <div className="mt-3 space-y-3">
+                        {faqItems.map((item) => (
+                            <SuggestionCard
+                                key={item.value}
+                                title={item.title}
+                                subtitle={item.subtitle}
+                                onClick={() => handlePick(item.value)}
+                                isActive={selectedQuestion === item.value}
+                            />
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -875,23 +946,40 @@ function SuggestionCard({
     title,
     subtitle,
     onClick,
+    isActive = false,
 }: {
     title: string;
     subtitle: string;
     onClick: () => void;
+    isActive?: boolean;
 }) {
     return (
         <button
             type="button"
             onClick={onClick}
-            className="flex w-full items-center gap-4 rounded-[24px] border border-[#E7D8C8] bg-white px-5 py-4 text-left transition hover:bg-[#FBF7F2]"
+            className={[
+                "flex w-full items-center gap-4 rounded-[24px] border px-5 py-4 text-left transition",
+                isActive
+                    ? "border-[#BFD2E7] bg-[#EEF6FC] ring-2 ring-[#D7DDE8]"
+                    : "border-[#E7D8C8] bg-white hover:bg-[#FBF7F2]",
+            ].join(" ")}
         >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#EEF6FC] text-lg text-[#000099]">
+            <div
+                className={[
+                    "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg",
+                    isActive ? "bg-white text-[#000099]" : "bg-[#EEF6FC] text-[#000099]",
+                ].join(" ")}
+            >
                 <FileText size={18} />
             </div>
 
             <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-[#292220] sm:text-base">
+                <div
+                    className={[
+                        "text-sm font-semibold sm:text-base",
+                        isActive ? "text-[#000099]" : "text-[#292220]",
+                    ].join(" ")}
+                >
                     {title}
                 </div>
                 <div className="mt-1 text-xs text-[#6B625A] sm:text-sm">
@@ -899,7 +987,14 @@ function SuggestionCard({
                 </div>
             </div>
 
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#D7DDE8] text-xl text-[#000099]">
+            <div
+                className={[
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xl",
+                    isActive
+                        ? "border-[#BFD2E7] bg-white text-[#000099]"
+                        : "border-[#D7DDE8] text-[#000099]",
+                ].join(" ")}
+            >
                 <ChevronRight size={20} />
             </div>
         </button>
@@ -1079,11 +1174,7 @@ function Bubble({
                             className="rounded-full border border-[#D7DDE8] bg-[#F5F8FF] px-4 py-2 text-sm font-medium text-[#000099] hover:bg-[#EAF1FF]"
                             title="Spill av svar"
                         >
-                            {isPlaying ? (
-                                <Pause size={16} />
-                            ) : (
-                                <Volume2 size={16} />
-                            )}
+                            {isPlaying ? <Pause size={16} /> : <Volume2 size={16} />}
                         </button>
                     </div>
                 )}
