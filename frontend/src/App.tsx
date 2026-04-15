@@ -1,11 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMsal } from "@azure/msal-react"; // SmDev
-import { callApi } from "./api/apiClient"; // SmDev
-import { speechToText, textToSpeech, } from "./services/speechService"; // SmDevv
+import { useMsal } from "@azure/msal-react";
+import { callApi } from "./api/apiClient";
+import { speechToText, textToSpeech } from "./services/speechService";
+import mestaLogo from "./assets/Mesta_logo.svg";
+import {
+    Menu,
+    Trash2,
+    Mic,
+    Send,
+    FileText,
+    ChevronRight,
+    Volume2,
+    Pause,
+    Search,
+    PanelLeftClose,
+    PanelLeftOpen,
+    LoaderCircle,
+} from "lucide-react";
 
 type Role = "user" | "assistant";
 
-type ApiMessage = { role: "user" | "assistant"; content: string };
+type ApiMessage = {
+    role: "user" | "assistant";
+    content: string;
+};
 
 type ChatRequest = {
     question: string;
@@ -26,22 +44,91 @@ type Message = {
     sources?: SourceHit[];
 };
 
+type ChatSession = {
+    id: string;
+    title: string;
+    createdAt: string;
+    updatedAt: string;
+    messages: Message[];
+};
+
+const STORAGE_KEY = "mesta-ai-chat-history-tailwind-final-v3";
+const DEFAULT_CHAT_TITLE = "Ny chat";
+
 function uid() {
     return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
 
-function useIsDesktop() {
-    const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 900);
+function nowIso() {
+    return new Date().toISOString();
+}
 
-    useEffect(() => {
-        const mq = window.matchMedia("(min-width: 900px)");
-        const handler = () => setIsDesktop(mq.matches);
-        handler();
-        mq.addEventListener("change", handler);
-        return () => mq.removeEventListener("change", handler);
-    }, []);
+function createChat(title = DEFAULT_CHAT_TITLE): ChatSession {
+    const now = nowIso();
+    return {
+        id: uid(),
+        title,
+        createdAt: now,
+        updatedAt: now,
+        messages: [],
+    };
+}
 
-    return isDesktop;
+function generateChatTitle(question: string) {
+    const text = question.replace(/\s+/g, " ").trim();
+    if (!text) return DEFAULT_CHAT_TITLE;
+    return text.length > 44 ? `${text.slice(0, 44).trim()}…` : text;
+}
+
+function formatTime(iso: string) {
+    return new Date(iso).toLocaleTimeString("no-NO", {
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
+
+function getBucketLabel(iso: string) {
+    const date = new Date(iso);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    const isSameDay = (a: Date, b: Date) =>
+        a.getFullYear() === b.getFullYear() &&
+        a.getMonth() === b.getMonth() &&
+        a.getDate() === b.getDate();
+
+    if (isSameDay(date, today)) return "I dag";
+    if (isSameDay(date, yesterday)) return "I går";
+
+    return date.toLocaleDateString("no-NO", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+    });
+}
+
+function groupChats(chats: ChatSession[]) {
+    const groups: Record<string, ChatSession[]> = {};
+
+    chats.forEach((chat) => {
+        const label = getBucketLabel(chat.updatedAt);
+        if (!groups[label]) groups[label] = [];
+        groups[label].push(chat);
+    });
+
+    return Object.entries(groups);
+}
+
+function buildRequestHistory(messages: Message[]): ApiMessage[] {
+    return messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({
+            role: m.role,
+            content: m.content.trim(),
+        }))
+        .filter((m) => m.content.length > 0)
+        .slice(-6);
 }
 
 async function streamBackend(
@@ -112,49 +199,133 @@ async function fetchSources(req: ChatRequest): Promise<SourceHit[]> {
 }
 
 export default function App() {
-    const { accounts } = useMsal(); // SMDev
-    const user = accounts[0]; // SmDev
-    const isDesktop = useIsDesktop();
+    const { accounts } = useMsal();
+    const user = accounts[0];
+    const firstName = user?.name?.split(" ")[0] || "der";
 
-    const [messages, setMessages] = useState<Message[]>([]);
-    const audioMapRef = useRef<Map<string, HTMLAudioElement>>(new Map());
-    const generatingMapRef = useRef<Map<string, boolean>>(new Map());
+    const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+    const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [input, setInput] = useState("");
     const [isSending, setIsSending] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-    const listRef = useRef<HTMLDivElement | null>(null);
+    const audioMapRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+    const generatingMapRef = useRef<Map<string, boolean>>(new Map());
     const inputRef = useRef<HTMLTextAreaElement | null>(null);
+    const listRef = useRef<HTMLDivElement | null>(null);
 
-    const canSend = useMemo(
-        () => input.trim().length > 0 && !isSending,
-        [input, isSending]
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return;
+
+            const parsed = JSON.parse(raw) as ChatSession[];
+            if (!Array.isArray(parsed)) return;
+
+            const safeChats = parsed
+                .filter((chat) => chat && chat.id && Array.isArray(chat.messages))
+                .sort(
+                    (a, b) =>
+                        new Date(b.updatedAt).getTime() -
+                        new Date(a.updatedAt).getTime()
+                );
+
+            setChatSessions(safeChats);
+            if (safeChats.length > 0) {
+                setActiveChatId(safeChats[0].id);
+            }
+        } catch (error) {
+            console.error("Failed to load chat history:", error);
+        }
+    }, []);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(chatSessions));
+        } catch (error) {
+            console.error("Failed to save chat history:", error);
+        }
+    }, [chatSessions]);
+
+    const activeChat = useMemo(
+        () => chatSessions.find((chat) => chat.id === activeChatId) ?? null,
+        [chatSessions, activeChatId]
     );
 
+    const messages = activeChat?.messages ?? [];
+    const groupedChats = useMemo(() => groupChats(chatSessions), [chatSessions]);
     const isEmpty = messages.length === 0;
+    const canSend = input.trim().length > 0 && !isSending;
 
     useEffect(() => {
         listRef.current?.scrollTo({
             top: listRef.current.scrollHeight,
             behavior: "smooth",
         });
-    }, [messages]);
+    }, [activeChatId, chatSessions]);
 
-    const startNew = () => {
-        setMessages([]);
+    const focusComposer = () => {
+        window.setTimeout(() => inputRef.current?.focus(), 0);
+    };
+
+    const updateChatById = (
+        chatId: string,
+        updater: (chat: ChatSession) => ChatSession
+    ) => {
+        setChatSessions((prev) => {
+            const next = prev.map((chat) =>
+                chat.id === chatId ? updater(chat) : chat
+            );
+
+            return [...next].sort(
+                (a, b) =>
+                    new Date(b.updatedAt).getTime() -
+                    new Date(a.updatedAt).getTime()
+            );
+        });
+    };
+
+    const createAndSelectNewChat = () => {
+        const fresh = createChat();
+        setChatSessions((prev) => [fresh, ...prev]);
+        setActiveChatId(fresh.id);
         setInput("");
-        setTimeout(() => inputRef.current?.focus(), 0);
+        setSidebarOpen(false);
+        focusComposer();
+        return fresh.id;
+    };
+
+    const ensureActiveChatId = () => {
+        if (activeChatId) return activeChatId;
+        return createAndSelectNewChat();
+    };
+
+    const startNewChat = () => {
+        createAndSelectNewChat();
+    };
+
+    const deleteChat = (chatId: string) => {
+        const remaining = chatSessions.filter((chat) => chat.id !== chatId);
+        setChatSessions(remaining);
+
+        if (activeChatId === chatId) {
+            setActiveChatId(remaining[0]?.id ?? null);
+        }
     };
 
     const applySuggestion = (text: string) => {
         setInput(text);
-        setTimeout(() => inputRef.current?.focus(), 0);
+        focusComposer();
     };
 
     const send = async () => {
         const q = input.trim();
         if (!q || isSending) return;
 
-        const snapshotMessages = messages;
+        const chatId = ensureActiveChatId();
+        const snapshotMessages =
+            chatSessions.find((chat) => chat.id === chatId)?.messages ?? [];
 
         setIsSending(true);
         setInput("");
@@ -162,17 +333,22 @@ export default function App() {
         const userMsg: Message = { id: uid(), role: "user", content: q };
         const typingId = uid();
 
-        setMessages((prev) => [
-            ...prev,
-            userMsg,
-            { id: typingId, role: "assistant", content: "", sources: [] },
-        ]);
+        updateChatById(chatId, (chat) => ({
+            ...chat,
+            title:
+                chat.messages.length === 0 || chat.title === DEFAULT_CHAT_TITLE
+                    ? generateChatTitle(q)
+                    : chat.title,
+            updatedAt: nowIso(),
+            messages: [
+                ...chat.messages,
+                userMsg,
+                { id: typingId, role: "assistant", content: "", sources: [] },
+            ],
+        }));
 
         try {
-            const history: ApiMessage[] = snapshotMessages
-                .filter((m) => m.role === "user" || m.role === "assistant")
-                .slice(-6)
-                .map((m) => ({ role: m.role, content: m.content }));
+            const history = buildRequestHistory(snapshotMessages);
 
             const req: ChatRequest = {
                 question: q,
@@ -198,18 +374,19 @@ export default function App() {
 
                 fullText += piece;
 
-                setMessages((prev) =>
-                    prev.map((m) =>
+                updateChatById(chatId, (chat) => ({
+                    ...chat,
+                    updatedAt: nowIso(),
+                    messages: chat.messages.map((m) =>
                         m.id === typingId
                             ? {
                                 ...m,
                                 content: fullText,
                                 sources: [],
                             }
-
                             : m
-                    )
-                );
+                    ),
+                }));
             }, 20);
 
             await streamBackend(req, (chunk) => {
@@ -226,11 +403,12 @@ export default function App() {
 
             const sources = await fetchSources(req);
 
-            setMessages((prev) =>
-                prev.map((m) =>
+            updateChatById(chatId, (chat) => ({
+                ...chat,
+                updatedAt: nowIso(),
+                messages: chat.messages.map((m) =>
                     m.id === typingId
                         ? {
-
                             ...m,
                             content: fullText.trim()
                                 ? fullText
@@ -238,22 +416,24 @@ export default function App() {
                             sources,
                         }
                         : m
-                )
-            );
+                ),
+            }));
         } catch (err) {
             const msg =
                 err instanceof Error ? err.message : "Noe gikk galt. Prøv igjen.";
 
-            setMessages((prev) =>
-                prev.map((m) =>
+            updateChatById(chatId, (chat) => ({
+                ...chat,
+                updatedAt: nowIso(),
+                messages: chat.messages.map((m) =>
                     m.id === typingId
                         ? { ...m, content: msg, sources: [] }
                         : m
-                )
-            );
+                ),
+            }));
         } finally {
             setIsSending(false);
-            setTimeout(() => inputRef.current?.focus(), 0);
+            focusComposer();
         }
     };
 
@@ -264,96 +444,360 @@ export default function App() {
         }
     };
 
-    const shellStyle = isDesktop ? styles.shellDesktop : styles.shellMobile;
+    const gridClass = sidebarCollapsed
+        ? "lg:grid-cols-[88px_minmax(0,1fr)]"
+        : "lg:grid-cols-[300px_minmax(0,1fr)]";
 
     return (
-        <div style={styles.page}>
-            <div style={shellStyle}>
-                <div style={styles.header}>
-                    <div style={styles.headerLeft}>
-                        <div style={styles.appIcon} aria-hidden>
-                            📄
+        <div className="min-h-screen bg-[#F5F1EA] text-[#292220]">
+            {sidebarOpen && (
+                <button
+                    type="button"
+                    className="fixed inset-0 z-30 bg-[#0F173D]/25 lg:hidden"
+                    onClick={() => setSidebarOpen(false)}
+                />
+            )}
+
+            <div className="mx-auto flex min-h-screen max-w-[1440px] flex-col px-4 py-4 lg:px-6">
+                <header className="rounded-[28px] border border-[#E7D8C8] bg-white px-5 py-4 shadow-[0_10px_30px_rgba(15,23,61,0.05)]">
+                    <div className="flex items-center justify-between gap-4">
+                        <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#E7D8C8] bg-[#FFF8F2]">
+                                <img
+                                    src={mestaLogo}
+                                    alt="Mesta logo"
+                                    className="max-h-8 max-w-8 object-contain"
+                                />
+                            </div>
+
+                            <div className="min-w-0">
+                                <div className="truncate text-[22px] font-semibold tracking-tight text-[#000099]">
+                                    Mesta
+                                </div>
+                                <div className="text-sm text-[#6B625A]">
+                                    AI Assistent
+                                </div>
+                            </div>
                         </div>
-                        <div>
-                            <div style={styles.appTitle}>Mesta AI Assistent</div>
-                            <div style={styles.appSubtitle}>
-                                Spør om prosedyrer og feltarbeid
+
+                        <div className="flex items-center gap-3">
+                            <button
+                                type="button"
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#D7DDE8] bg-white text-lg text-[#000099] lg:hidden"
+                                onClick={() => setSidebarOpen(true)}
+                                title="Åpne historikk"
+                            >
+                                <Menu size={20} />
+                            </button>
+
+                            <div className="hidden text-sm font-medium text-[#000099] sm:block">
+                                Hei, {firstName}
+                            </div>
+
+                            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#D7DDE8] bg-[#F5F8FF] font-semibold text-[#000099]">
+                                {firstName.charAt(0).toUpperCase()}
                             </div>
                         </div>
                     </div>
+                </header>
 
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>
-                        {user ? `Velkommen ${user.name}` : ""}
-                    </div>
-                </div>
+                <div
+                    className={`mt-5 grid flex-1 grid-cols-1 gap-5 ${gridClass}`}
+                >
+                    <aside
+                        className={[
+                            "z-40 rounded-[28px] border border-[#E7D8C8] bg-white shadow-[0_10px_30px_rgba(15,23,61,0.04)] transition-all duration-300",
+                            "lg:static lg:block",
+                            sidebarOpen
+                                ? "fixed inset-y-24 left-4 w-[88vw] max-w-[320px] overflow-hidden"
+                                : "hidden lg:block",
+                            sidebarCollapsed ? "lg:w-[88px]" : "",
+                        ].join(" ")}
+                    >
+                        <div className="border-b border-[#F0E5D9] p-4">
+                            <div
+                                className={`flex items-center ${sidebarCollapsed
+                                    ? "justify-center"
+                                    : "justify-between"
+                                    } gap-2`}
+                            >
+                                {!sidebarCollapsed && (
+                                    <button
+                                        type="button"
+                                        onClick={startNewChat}
+                                        className="flex-1 rounded-2xl bg-[#FF6600] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#e45b00]"
+                                    >
+                                        Ny chat
+                                    </button>
+                                )}
 
-                <div style={styles.content} ref={listRef}>
-                    {isEmpty ? (
-                        <EmptyState onPick={applySuggestion} isDesktop={isDesktop} />
-                    ) : (
-                        <div style={styles.chat}>
-                            {messages.map((m) => (
-                                <Bubble
-                                    key={m.id}
-                                    id={m.id}
-                                    role={m.role}
-                                    content={m.content}
-                                    sources={m.sources}
-                                    audioMapRef={audioMapRef}
-                                    generatingMapRef={generatingMapRef}
-                                />
-                            ))}
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setSidebarCollapsed((prev) => !prev)
+                                    }
+                                    className="hidden h-11 w-11 items-center justify-center rounded-2xl border border-[#D7DDE8] bg-white text-[#000099] transition hover:bg-[#F5F8FF] lg:inline-flex"
+                                    title={
+                                        sidebarCollapsed
+                                            ? "Åpne sidepanel"
+                                            : "Lukk sidepanel"
+                                    }
+                                >
+                                    {sidebarCollapsed ? (
+                                        <PanelLeftOpen size={18} />
+                                    ) : (
+                                        <PanelLeftClose size={18} />
+                                    )}
+                                </button>
+                            </div>
                         </div>
-                    )}
-                </div>
 
-                <div style={styles.composerBar}>
-                    <div style={styles.inputWrap}>
-                        <textarea
-                            ref={inputRef}
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={onKeyDown}
-                            placeholder={isEmpty ? "Still et spørsmål…" : "Skriv en oppfølging…"}
-                            style={styles.textarea}
-                            rows={1}
-                            disabled={isSending}
-                        />
-                    </div>
-                    <button // SmOslomet
-                        onClick={async () => {
-                            try {
-                                const text = await speechToText();
-                                setInput(text);
-                            } catch (err) {
-                                console.error("Speech error:", err);
-                            }
-                        }}
-                        style={styles.roundBtn}
-                        title="Speak"
-                    >
-                        🎤
-                    </button>
-                    <button
-                        onClick={() => void send()}
-                        disabled={!canSend}
-                        style={{
-                            ...styles.roundBtn,
-                            ...styles.sendBtn,
-                            opacity: canSend ? 1 : 0.5,
-                            cursor: canSend ? "pointer" : "not-allowed",
-                        }}
-                        title="Send"
-                    >
-                        ➤
-                    </button>
-                </div>
+                        <div
+                            className={`max-h-[calc(100vh-220px)] overflow-y-auto p-4 ${sidebarCollapsed ? "px-2" : ""
+                                }`}
+                        >
+                            {sidebarCollapsed ? (
+                                <div className="space-y-2">
+                                    {chatSessions.slice(0, 12).map((chat) => {
+                                        const isActive = chat.id === activeChatId;
+                                        const label = chat.title
+                                            .trim()
+                                            .charAt(0)
+                                            .toUpperCase();
 
-                <div style={styles.footerHint}>
-                    Enter sender · Shift+Enter ny linje ·{" "}
-                    <button onClick={startNew} style={styles.linkBtn}>
-                        Ny chat
-                    </button>
+                                        return (
+                                            <button
+                                                key={chat.id}
+                                                type="button"
+                                                onClick={() =>
+                                                    setActiveChatId(chat.id)
+                                                }
+                                                className={[
+                                                    "flex h-12 w-full items-center justify-center rounded-2xl border text-sm font-semibold transition",
+                                                    isActive
+                                                        ? "border-[#BFD2E7] bg-[#EEF6FC] text-[#000099]"
+                                                        : "border-[#EFE5DA] bg-white text-[#6B625A] hover:bg-[#FBF7F2]",
+                                                ].join(" ")}
+                                                title={chat.title}
+                                            >
+                                                {label || "N"}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            ) : groupedChats.length === 0 ? (
+                                <div className="rounded-2xl border border-dashed border-[#E7D8C8] bg-[#FBF7F2] p-4 text-sm text-[#6B625A]">
+                                    Ingen tidligere chatter ennå.
+                                </div>
+                            ) : (
+                                groupedChats.map(([label, chats]) => (
+                                    <div key={label} className="mb-5">
+                                        <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[#000099]">
+                                            {label}
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            {chats.map((chat) => {
+                                                const isActive = chat.id === activeChatId;
+                                                const preview =
+                                                    [...chat.messages]
+                                                        .reverse()
+                                                        .find(
+                                                            (m) =>
+                                                                m.role ===
+                                                                "assistant"
+                                                        )?.content ||
+                                                    chat.messages[0]?.content ||
+                                                    "Tom samtale";
+
+                                                return (
+                                                    <button
+                                                        key={chat.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setActiveChatId(chat.id);
+                                                            setSidebarOpen(false);
+                                                        }}
+                                                        className={[
+                                                            "w-full rounded-2xl border p-3 text-left transition",
+                                                            isActive
+                                                                ? "border-[#BFD2E7] bg-[#EEF6FC]"
+                                                                : "border-[#EFE5DA] bg-white hover:bg-[#FBF7F2]",
+                                                        ].join(" ")}
+                                                    >
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div
+                                                                className={[
+                                                                    "line-clamp-2 text-sm font-semibold leading-5",
+                                                                    isActive
+                                                                        ? "text-[#000099]"
+                                                                        : "text-[#292220]",
+                                                                ].join(" ")}
+                                                            >
+                                                                {chat.title}
+                                                            </div>
+
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="shrink-0 text-[11px] text-[#8A8077]">
+                                                                    {formatTime(
+                                                                        chat.updatedAt
+                                                                    )}
+                                                                </span>
+
+                                                                <span
+                                                                    role="button"
+                                                                    tabIndex={0}
+                                                                    className="flex h-7 w-7 items-center justify-center rounded-full text-[#8A8077] hover:bg-[#F1E6DB] hover:text-[#FF6600]"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        deleteChat(
+                                                                            chat.id
+                                                                        );
+                                                                    }}
+                                                                    onKeyDown={(e) => {
+                                                                        if (
+                                                                            e.key === "Enter" ||
+                                                                            e.key === " "
+                                                                        ) {
+                                                                            e.preventDefault();
+                                                                            deleteChat(
+                                                                                chat.id
+                                                                            );
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="mt-2 line-clamp-2 text-xs leading-5 text-[#6B625A]">
+                                                            {preview}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </aside>
+
+                    <main className="flex min-w-0 flex-col">
+                        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <h1 className="text-[28px] font-semibold tracking-tight text-[#000099]">
+                                    Mesta AI Assistent
+                                </h1>
+                                <p className="mt-1 text-sm text-[#6B625A]">
+                                    Spør om prosedyrer, HMS, inspeksjoner og
+                                    rapportering.
+                                </p>
+                            </div>
+                        </div>
+
+                        <section className="relative flex min-h-[calc(100vh-220px)] flex-1 flex-col overflow-hidden rounded-[32px] border border-[#E7D8C8] bg-white shadow-[0_10px_30px_rgba(15,23,61,0.04)]">
+                            <div
+                                ref={listRef}
+                                className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8"
+                            >
+                                {isEmpty ? (
+                                    <EmptyState
+                                        firstName={firstName}
+                                        onPick={applySuggestion}
+                                    />
+                                ) : (
+                                    <div className="mx-auto flex max-w-4xl flex-col gap-6">
+                                        {messages.map((message) => (
+                                            <Bubble
+                                                key={message.id}
+                                                id={message.id}
+                                                role={message.role}
+                                                content={message.content}
+                                                sources={message.sources}
+                                                audioMapRef={audioMapRef}
+                                                generatingMapRef={generatingMapRef}
+                                                isLoading={
+                                                    isSending &&
+                                                    message.role ===
+                                                    "assistant" &&
+                                                    message.content.trim() === ""
+                                                }
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="border-t border-[#F0E5D9] bg-white p-4">
+                                <div className="flex items-end gap-3 rounded-[24px] border border-[#E7D8C8] bg-[#FBF7F2] p-3">
+                                    <div className="flex flex-1 items-start gap-3">
+                                 
+
+                                        <textarea
+                                            ref={inputRef}
+                                            value={input}
+                                            onChange={(e) =>
+                                                setInput(e.target.value)
+                                            }
+                                            onKeyDown={onKeyDown}
+                                            placeholder={
+                                                isEmpty
+                                                    ? "Still et spørsmål..."
+                                                    : "Skriv en oppfølging..."
+                                            }
+                                            rows={1}
+                                            disabled={isSending}
+                                            className="min-h-[28px] max-h-32 w-full resize-none border-none bg-transparent text-[15px] text-[#292220] outline-none placeholder:text-[#8A8077]"
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            try {
+                                                const text =
+                                                    await speechToText();
+                                                setInput(text);
+                                            } catch (err) {
+                                                console.error(
+                                                    "Speech error:",
+                                                    err
+                                                );
+                                            }
+                                        }}
+                                        disabled={isSending}
+                                        className="flex h-11 w-11 items-center justify-center rounded-full border border-[#D7DDE8] bg-white text-lg text-[#000099] hover:bg-[#F5F8FF] disabled:cursor-not-allowed disabled:opacity-50"
+                                        title="Tale til tekst"
+                                    >
+                                        <Mic size={20} />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => void send()}
+                                        disabled={!canSend}
+                                        className="flex h-11 min-w-[52px] items-center justify-center rounded-2xl bg-[#FF6600] px-4 text-sm font-semibold text-white transition hover:bg-[#e45b00] disabled:cursor-not-allowed disabled:opacity-50"
+                                        title={isSending ? "Henter svar..." : "Send"}
+                                    >
+                                        {isSending ? (
+                                            <LoaderCircle
+                                                size={18}
+                                                className="animate-spin"
+                                            />
+                                        ) : (
+                                            <Send size={16} />
+                                        )}
+                                    </button>
+                                </div>
+
+                                <div className="mt-2 text-center text-xs text-[#8A8077]">
+                                    Enter sender · Shift+Enter ny linje
+                                </div>
+                            </div>
+                        </section>
+                    </main>
                 </div>
             </div>
         </div>
@@ -361,40 +805,67 @@ export default function App() {
 }
 
 function EmptyState({
+    firstName,
     onPick,
-    isDesktop,
 }: {
-    onPick: (t: string) => void;
-    isDesktop: boolean;
+    firstName: string;
+    onPick: (text: string) => void;
 }) {
     return (
-        <div style={styles.empty}>
-            <div style={styles.bigIcon} aria-hidden>
-                📄
-            </div>
-            <div style={styles.emptyTitle}>Hvordan kan jeg hjelpe deg i dag?</div>
-            <div style={styles.emptyText}>
-                Spør om HMS, prosedyrer, inspeksjoner eller rapportering.
+        <div className="mx-auto mt-6 flex max-w-4xl flex-col items-center text-center">
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl border border-[#E7D8C8] bg-[#FFF8F2]">
+                <div className="text-2xl text-[#FF6600]">
+                    <img
+                        src={mestaLogo}
+                        alt="Mesta logo"
+                        className="max-h-8 max-w-8 object-contain"
+                    />
+                </div>
             </div>
 
-            <div style={{ ...styles.cards, maxWidth: isDesktop ? 720 : "100%" }}>
-                <SuggestionCard
-                    title="Registrer ny inspeksjon"
-                    subtitle="Hvordan starte en inspeksjon"
-                    onClick={() => onPick("Hvordan registrerer jeg en ny inspeksjon?")}
-                />
-                <SuggestionCard
-                    title="Sikkerhetsprosedyrer"
-                    subtitle="Finn krav og retningslinjer"
-                    onClick={() =>
-                        onPick("Hvilke sikkerhetsprosedyrer gjelder for feltarbeid?")
-                    }
-                />
-                <SuggestionCard
-                    title="Lever arbeidsrapport"
-                    subtitle="Hvordan fylle ut og sende rapport"
-                    onClick={() => onPick("Hvordan leverer jeg arbeidsrapport?")}
-                />
+            <h2 className="max-w-3xl text-3xl font-semibold tracking-tight text-[#000099] sm:text-5xl">
+                Hvordan kan jeg hjelpe deg i dag?
+            </h2>
+
+            <p className="mt-5 max-w-2xl text-base leading-7 text-[#6B625A] sm:text-lg">
+                Få raske svar basert på interne dokumenter og etablerte
+                arbeidsprosesser i en enkel og oversiktlig portal.
+            </p>
+
+            <div className="mt-8 w-full max-w-3xl text-left">
+                <div className="mb-3 text-lg font-semibold text-[#000099]">
+                    Ofte stilte spørsmål
+                </div>
+
+                <div className="space-y-3">
+                    <SuggestionCard
+                        title="Hvordan opprette en innkjøpsordre?"
+                        subtitle="Basert på dokumenter i SharePoint"
+                        onClick={() =>
+                            onPick("Hvordan opprette en innkjøpsordre?")
+                        }
+                    />
+
+                    <SuggestionCard
+                        title="Hvordan registrere avvik?"
+                        subtitle="Basert på dokumenter i SharePoint"
+                        onClick={() => onPick("Hvordan registrere avvik?")}
+                    />
+
+                    <SuggestionCard
+                        title="Hva er de viktigste HMS-kravene?"
+                        subtitle="Basert på dokumenter i SharePoint"
+                        onClick={() =>
+                            onPick("Hva er de viktigste HMS-kravene?")
+                        }
+                    />
+
+                    <SuggestionCard
+                        title={`Hva kan du hjelpe meg med, ${firstName}?`}
+                        subtitle="Få en oversikt over funksjoner og bruk"
+                        onClick={() => onPick("Hva kan du hjelpe meg med?")}
+                    />
+                </div>
             </div>
         </div>
     );
@@ -410,9 +881,27 @@ function SuggestionCard({
     onClick: () => void;
 }) {
     return (
-        <button onClick={onClick} style={styles.card} type="button">
-            <div style={styles.cardTitle}>{title}</div>
-            <div style={styles.cardSubtitle}>{subtitle}</div>
+        <button
+            type="button"
+            onClick={onClick}
+            className="flex w-full items-center gap-4 rounded-[24px] border border-[#E7D8C8] bg-white px-5 py-4 text-left transition hover:bg-[#FBF7F2]"
+        >
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#EEF6FC] text-lg text-[#000099]">
+                <FileText size={18} />
+            </div>
+
+            <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-[#292220] sm:text-base">
+                    {title}
+                </div>
+                <div className="mt-1 text-xs text-[#6B625A] sm:text-sm">
+                    {subtitle}
+                </div>
+            </div>
+
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#D7DDE8] text-xl text-[#000099]">
+                <ChevronRight size={20} />
+            </div>
         </button>
     );
 }
@@ -424,6 +913,7 @@ function Bubble({
     sources,
     audioMapRef,
     generatingMapRef,
+    isLoading = false,
 }: {
     id: string;
     role: Role;
@@ -431,111 +921,186 @@ function Bubble({
     sources?: SourceHit[];
     audioMapRef: React.MutableRefObject<Map<string, HTMLAudioElement>>;
     generatingMapRef: React.MutableRefObject<Map<string, boolean>>;
-
+    isLoading?: boolean;
 }) {
     const isUser = role === "user";
     const [isPlaying, setIsPlaying] = useState(false);
+
     const visibleSources = (sources ?? []).filter(
         (source) => source.title || source.url
     );
-    return (
-        <div
-            style={{
-                ...styles.row,
-                justifyContent: isUser ? "flex-end" : "flex-start",
-            }}
-        >
-            <div
-                style={{
-                    ...styles.bubble,
-                    ...(isUser ? styles.userBubble : styles.assistantBubble),
-                }}
-            >
-                {content.split("\n").map((line, i) => (
-                    <div key={i} style={{ whiteSpace: "pre-wrap" }}>
-                        {line || "\u00A0"}
+
+    const handleTextToSpeech = async () => {
+        try {
+            const existing = audioMapRef.current.get(id);
+
+            if (existing) {
+                if (!existing.paused) {
+                    existing.pause();
+                    return;
+                }
+
+                await existing.play();
+                return;
+            }
+
+            if (generatingMapRef.current.get(id)) return;
+            generatingMapRef.current.set(id, true);
+
+            const audioUrl = await textToSpeech(content);
+            const audio = new Audio(audioUrl);
+            audioMapRef.current.set(id, audio);
+
+            audio.onplay = () => {
+                setIsPlaying(true);
+            };
+            audio.onpause = () => {
+                setIsPlaying(false);
+            };
+            audio.onended = () => {
+                setIsPlaying(false);
+                audioMapRef.current.delete(id);
+                generatingMapRef.current.delete(id);
+            };
+            audio.onerror = () => {
+                setIsPlaying(false);
+                audioMapRef.current.delete(id);
+                generatingMapRef.current.delete(id);
+            };
+
+            await audio.play();
+        } catch (err) {
+            console.error("TTS error:", err);
+            setIsPlaying(false);
+            generatingMapRef.current.delete(id);
+        }
+    };
+
+    const renderStructuredContent = (text: string) => {
+        const lines = text.split("\n");
+
+        return lines.map((line, index) => {
+            const trimmed = line.trim();
+
+            if (!trimmed) {
+                return <div key={index} className="h-2" />;
+            }
+
+            const isHeading =
+                trimmed.endsWith(":") &&
+                trimmed.length < 40 &&
+                !trimmed.startsWith("-") &&
+                !trimmed.startsWith("•") &&
+                !/^\d+\./.test(trimmed);
+
+            const isNumberedStep = /^\d+\.\s/.test(trimmed);
+            const isBullet = /^[-•]\s/.test(trimmed);
+
+            if (isHeading) {
+                return (
+                    <div
+                        key={index}
+                        className="pt-2 text-xs font-bold uppercase tracking-[0.18em] text-[#000099]"
+                    >
+                        {trimmed}
                     </div>
-                ))}
+                );
+            }
 
-                {!isUser && (
-                    <div style={{ marginTop: 8 }}>
+            if (isNumberedStep) {
+                const match = trimmed.match(/^(\d+)\.\s(.*)$/);
+                const stepNumber = match?.[1] ?? "";
+                const stepText = match?.[2] ?? trimmed;
+
+                return (
+                    <div key={index} className="flex items-start gap-3">
+                        <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#EEF6FC] text-xs font-semibold text-[#000099]">
+                            {stepNumber}
+                        </div>
+                        <div className="flex-1 whitespace-pre-wrap text-[#292220]">
+                            {stepText}
+                        </div>
+                    </div>
+                );
+            }
+
+            if (isBullet) {
+                const bulletText = trimmed.replace(/^[-•]\s/, "");
+
+                return (
+                    <div key={index} className="flex items-start gap-3">
+                        <div className="mt-[10px] h-2 w-2 shrink-0 rounded-full bg-[#FF6600]" />
+                        <div className="flex-1 whitespace-pre-wrap text-[#292220]">
+                            {bulletText}
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div key={index} className="whitespace-pre-wrap text-[#292220]">
+                    {line}
+                </div>
+            );
+        });
+    };
+
+    if (isUser) {
+        return (
+            <div className="flex justify-end">
+                <div className="max-w-[85%] rounded-full bg-[#FF6600] px-5 py-3 text-sm font-medium text-white sm:max-w-[70%] sm:text-base">
+                    {content}
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex justify-start">
+            <div className="w-full max-w-4xl rounded-[28px] border border-[#D7DDE8] bg-white p-5">
+                {isLoading ? (
+                    <div className="flex items-center gap-3 text-[#000099]">
+                        <LoaderCircle size={20} className="animate-spin" />
+                        <span className="text-sm font-medium text-[#6B625A]">
+                            Henter svar...
+                        </span>
+                    </div>
+                ) : (
+                    <div className="space-y-3 text-[15px] leading-7 sm:text-base">
+                        {renderStructuredContent(content)}
+                    </div>
+                )}
+
+                {!isLoading && content.trim() && (
+                    <div className="mt-5">
                         <button
-
-                            onClick={async () => { // SmDev additions for text to speech
-                                try {
-                                    const existing = audioMapRef.current.get(id);
-
-                                    // Toggle play/pause
-                                    if (existing) {
-                                        if (!existing.paused) {
-                                            existing.pause();
-                                            return;
-                                        } else {
-                                            await existing.play();
-                                            return;
-                                        }
-                                        return;
-                                    }
-
-                                    // Prevent duplicate generation
-                                    if (generatingMapRef.current.get(id)) return;
-                                    generatingMapRef.current.set(id, true);
-
-                                    const audioUrl = await textToSpeech(content);
-
-                                    const audio = new Audio(audioUrl);
-                                    audioMapRef.current.set(id, audio);
-
-                                    audio.onplay = () => {
-                                        setIsPlaying(true);
-                                    };
-                                    audio.onpause = () => {
-                                        setIsPlaying(false);
-                                    };
-                                    audio.onended = () => {
-                                        setIsPlaying(false);
-                                        audioMapRef.current.delete(id);
-                                        generatingMapRef.current.delete(id);
-                                    }
-                                    audio.onerror = () => {
-                                        setIsPlaying(false);
-                                        audioMapRef.current.delete(id);
-                                        generatingMapRef.current.delete(id);
-                                    }
-
-                                    audio.onerror = () => {
-                                        setIsPlaying(false);
-                                        audioMapRef.current.delete(id);
-                                        generatingMapRef.current.delete(id);
-                                    };
-
-                                    await audio.play();
-                                } catch (err) {
-                                    console.error("TTS error:", err);
-                                    setIsPlaying(false);
-                                    generatingMapRef.current.delete(id);
-                                }
-                            }}
-                            style={{
-                                border: "none",
-                                background: "transparent",
-                                cursor: "pointer",
-                                fontSize: 14,
-                            }}
-                            title="Play audio"
+                            type="button"
+                            onClick={() => void handleTextToSpeech()}
+                            className="rounded-full border border-[#D7DDE8] bg-[#F5F8FF] px-4 py-2 text-sm font-medium text-[#000099] hover:bg-[#EAF1FF]"
+                            title="Spill av svar"
                         >
-                            {isPlaying ? "⏸" : "🔊"}
+                            {isPlaying ? (
+                                <Pause size={16} />
+                            ) : (
+                                <Volume2 size={16} />
+                            )}
                         </button>
                     </div>
                 )}
 
-                {!isUser && visibleSources.length > 0 && (
-                    <div style={styles.sourcesWrap}>
-                        <div style={styles.sourcesTitle}>Kilder</div>
-                        <div style={styles.sourcesList}>
+                {!isLoading && visibleSources.length > 0 && (
+                    <div className="mt-6 border-t border-[#F0E5D9] pt-5">
+                        <div className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-[#000099]">
+                            Kilder
+                        </div>
+
+                        <div className="space-y-3">
                             {visibleSources.map((source, index) => (
-                                <div key={`${source.url ?? source.title ?? "source"}-${index}`} style={styles.sourceItem}>
-                                    <div style={styles.sourceName}>
+                                <div
+                                    key={`${source.url ?? source.title ?? "source"}-${index}`}
+                                    className="rounded-2xl border border-[#E7D8C8] bg-[#FBF7F2] p-4"
+                                >
+                                    <div className="text-sm font-semibold text-[#292220]">
                                         {source.title || `Kilde ${index + 1}`}
                                     </div>
 
@@ -544,12 +1109,14 @@ function Bubble({
                                             href={source.url}
                                             target="_blank"
                                             rel="noreferrer noopener"
-                                            style={styles.sourceLink}
+                                            className="mt-2 inline-block text-sm font-medium text-[#000099] hover:text-[#FF6600] hover:underline"
                                         >
                                             Åpne i SharePoint
                                         </a>
                                     ) : (
-                                        <div style={styles.sourceSnippet}>{source.contentSnippet}</div>
+                                        <div className="mt-2 text-sm leading-6 text-[#6B625A]">
+                                            {source.contentSnippet}
+                                        </div>
                                     )}
                                 </div>
                             ))}
@@ -560,263 +1127,3 @@ function Bubble({
         </div>
     );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-    page: {
-        minHeight: "100vh",
-        background: "#111827",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "stretch",
-    },
-
-    shellDesktop: {
-        width: "100%",
-        height: "100vh",
-        background: "#F6F7FB",
-        display: "flex",
-        flexDirection: "column",
-    },
-
-    shellMobile: {
-        width: "100%",
-        maxWidth: 420,
-        height: "min(860px, 95vh)",
-        background: "#F6F7FB",
-        borderRadius: 28,
-        overflow: "hidden",
-        boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
-        display: "flex",
-        flexDirection: "column",
-        border: "1px solid rgba(0,0,0,0.08)",
-        margin: 16,
-    },
-
-    header: {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "14px 16px",
-        background: "#FFFFFF",
-        borderBottom: "1px solid rgba(0,0,0,0.08)",
-    },
-    headerLeft: { display: "flex", gap: 12, alignItems: "center" },
-    appIcon: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        background: "#E8EDFF",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 18,
-    },
-    appTitle: { fontWeight: 800, fontSize: 15, color: "#111827" },
-    appSubtitle: { fontSize: 12, color: "#6B7280", marginTop: 2 },
-
-    iconBtn: {
-        border: "1px solid rgba(0,0,0,0.08)",
-        background: "#fff",
-        width: 38,
-        height: 38,
-        borderRadius: 999,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-    },
-
-    content: {
-        flex: 1,
-        overflowY: "auto",
-        padding: 16,
-        display: "flex",
-        justifyContent: "center",
-    },
-
-    empty: {
-        width: "100%",
-        maxWidth: 900,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        paddingTop: 28,
-        gap: 10,
-    },
-    bigIcon: {
-        width: 74,
-        height: 74,
-        borderRadius: 22,
-        background: "#E8EDFF",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 26,
-        marginBottom: 8,
-    },
-    emptyTitle: {
-        fontSize: 26,
-        fontWeight: 800,
-        color: "#111827",
-        textAlign: "center",
-    },
-    emptyText: {
-        fontSize: 13,
-        color: "#6B7280",
-        textAlign: "center",
-        maxWidth: 520,
-    },
-
-    cards: {
-        width: "100%",
-        marginTop: 14,
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-    },
-    card: {
-        width: "100%",
-        textAlign: "left",
-        background: "#FFFFFF",
-        border: "1px solid rgba(0,0,0,0.08)",
-        borderRadius: 14,
-        padding: "14px 14px",
-        cursor: "pointer",
-        boxShadow: "0 8px 20px rgba(17,24,39,0.06)",
-    },
-    cardTitle: { fontWeight: 800, color: "#111827", fontSize: 14 },
-    cardSubtitle: { marginTop: 4, fontSize: 12, color: "#6B7280" },
-
-    chat: {
-        width: "100%",
-        maxWidth: 900,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-    },
-    row: { display: "flex", width: "100%" },
-    bubble: {
-        maxWidth: "85%",
-        borderRadius: 16,
-        padding: "10px 12px",
-        fontSize: 13.5,
-        lineHeight: 1.35,
-        border: "1px solid rgba(0,0,0,0.08)",
-        boxShadow: "0 6px 18px rgba(17,24,39,0.06)",
-        background: "#fff",
-    },
-    userBubble: { background: "#E8EDFF", color: "#111827" },
-    assistantBubble: { background: "#FFFFFF", color: "#111827" },
-
-    sourcesWrap: {
-        marginTop: 12,
-        paddingTop: 10,
-        borderTop: "1px solid rgba(0,0,0,0.08)",
-    },
-    sourcesTitle: {
-        fontSize: 12,
-        fontWeight: 800,
-        color: "#374151",
-        marginBottom: 8,
-    },
-    sourcesList: {
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-    },
-    sourceItem: {
-        padding: "8px 10px",
-        borderRadius: 12,
-        background: "#F9FAFB",
-        border: "1px solid rgba(0,0,0,0.06)",
-    },
-    sourceName: {
-        fontWeight: 700,
-        fontSize: 12.5,
-        color: "#111827",
-        marginBottom: 4,
-    },
-    sourceLink: {
-        fontSize: 12.5,
-        color: "#4F46E5",
-        textDecoration: "none",
-        fontWeight: 700,
-    },
-    sourceSnippet: {
-        fontSize: 12,
-        color: "#6B7280",
-    },
-
-    composerBar: {
-        padding: "10px 12px",
-        background: "#FFFFFF",
-        borderTop: "1px solid rgba(0,0,0,0.08)",
-        display: "flex",
-        gap: 10,
-        alignItems: "flex-end",
-        justifyContent: "center",
-    },
-    roundBtn: {
-        width: 44,
-        height: 44,
-        borderRadius: 999,
-        border: "1px solid rgba(0,0,0,0.10)",
-        background: "#F3F4F6",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-        fontSize: 16,
-    },
-    roundbtn: {
-        width: 44,
-        height: 44,
-        borderRadius: 999,
-        border: "1px solid rgba(0,0,0,0.10)",
-        background: "#F3F4F6",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-        fontSize: 16,
-    },
-    sendBtn: { background: "#4F46E5", color: "#fff", border: "none" },
-
-    inputWrap: {
-        width: "min(900px, 100%)",
-        flex: 1,
-        border: "1px solid rgba(0,0,0,0.10)",
-        background: "#F9FAFB",
-        borderRadius: 18,
-        padding: "10px 12px",
-        display: "flex",
-        maxWidth: 900,
-    },
-    textarea: {
-        width: "100%",
-        border: "none",
-        outline: "none",
-        resize: "none",
-        background: "transparent",
-        fontSize: 13.5,
-        lineHeight: 1.35,
-        color: "#111827",
-    },
-
-    footerHint: {
-        padding: "8px 14px 12px",
-        background: "#FFFFFF",
-        fontSize: 11.5,
-        color: "#6B7280",
-        textAlign: "center",
-        borderTop: "1px solid rgba(0,0,0,0.06)",
-    },
-    linkBtn: {
-        border: "none",
-        background: "transparent",
-        color: "#4F46E5",
-        fontWeight: 700,
-        cursor: "pointer",
-        padding: 0,
-    },
-};

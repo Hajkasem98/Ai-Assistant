@@ -31,7 +31,6 @@ public sealed class ChatController : ControllerBase //Cannot be inherited (good 
     public async Task<ActionResult<ChatResponse>> Post(
         [FromBody] ChatRequest req,     // Request body (JSON ? ChatRequest)
         CancellationToken ct)       // Allows request cancellation (important for async/AI calls)
-    )
     {
         if (string.IsNullOrWhiteSpace(req.Question))
             return BadRequest("Question is required.");
