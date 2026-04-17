@@ -12,9 +12,10 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy(corsPolicyName, policy =>
     {
-        policy.WithOrigins("http://localhost:5173","http://localhost:5174")
+        policy.WithOrigins("http://localhost:5173", "http://localhost:5174", "https://black-mud-04ce3db03.6.azurestaticapps.net")
               .AllowAnyHeader()
-              .AllowAnyMethod();
+              .AllowAnyMethod()
+              .WithExposedHeaders("*"); // SMDev addition for tts 
     });
 });
 builder.Services.AddEndpointsApiExplorer();
@@ -33,15 +34,9 @@ builder.Services.AddSingleton<ChatService>();
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "AI Assistant API V1");
-        c.RoutePrefix = "swagger";
-    });
-}
+
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 
@@ -50,4 +45,3 @@ app.UseCors(corsPolicyName);
 app.MapControllers();
 
 app.Run();
-

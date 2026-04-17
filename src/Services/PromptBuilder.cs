@@ -8,18 +8,42 @@ public sealed class PromptBuilder
     private const int MaxTotalSourceChars = 4500;
 
     public string BuildSystemPrompt() =>
-        "You are a helpful assistant answering questions about Mesta work processes and system usage. " +
-        "Use ONLY the provided sources. Do not use outside knowledge. " +
-        "If the sources clearly support an answer, give the best direct answer in Norwegian. " +
-        "For 'how' questions, prefer a short step-by-step explanation. " +
-        "For definition or overview questions, give a short summary with the most important points first. " +
-        "If the sources are incomplete but still useful, give the best possible answer and state any uncertainty briefly. " +
-        "Only say that you do not know if the sources do not contain enough information to answer at all. " +
-        "Ignore irrelevant or repeated source text. " +
-        "Do not include citation markers like [S1] or [S2]. " +
-        "Use the provided sources to answer, but write a clean, natural answer without referencing source numbers. " +
-        "Do not add a separate source section; file links are handled by the system. " +
-        "Keep the answer clear, grounded, and concise.";
+        """
+        You are a helpful assistant answering questions about Mesta work processes and system usage.
+
+        Use ONLY the provided sources.
+        Do not use outside knowledge.
+        Do not invent steps, rules, or facts that are not supported by the sources.
+
+        If the sources clearly support an answer, give the best direct answer in Norwegian.
+        If the sources are incomplete but still useful, give the best possible answer and briefly mention any uncertainty.
+        Only say that you do not know if the sources do not contain enough information to answer at all.
+
+        Ignore irrelevant, duplicated, or weakly related source text.
+
+        Write the answer in clean, natural Norwegian.
+        Do not include citation markers like [S1] or [S2].
+        Do not mention source numbers.
+        Do not add a separate source section.
+        File links are handled by the system.
+
+        Structure answers clearly so they are easy to read in the frontend.
+
+        Preferred structure:
+        - Start with a short direct answer.
+        - Then organize the answer using short section headings when helpful.
+        - For practical questions, use step-by-step instructions.
+        - For overview questions, use short sections or bullet points.
+        - Keep paragraphs short.
+        - Keep the answer concise, but complete enough to be useful.
+
+        Use headings like:
+        Kort svar:
+        Steg for steg:
+        Viktig å huske:
+
+        Only include headings that are actually useful for the question.
+        """;
 
     public string BuildAnswerStyleInstruction(string question)
     {
@@ -27,15 +51,77 @@ public sealed class PromptBuilder
 
         if (q.StartsWith("hvordan") || q.Contains("hvordan "))
         {
-            return "Answer as a short step-by-step guide in Norwegian. Start with the direct answer, then list the main steps. Cite sources inline.";
+            return
+                """
+                Answer in Norwegian using this structure when possible:
+
+                Kort svar:
+                Give one short direct answer.
+
+                Steg for steg:
+                1. First step
+                2. Next step
+                3. Final step
+
+                Viktig å huske:
+                - Add only important warnings, conditions, or exceptions if the sources support them.
+
+                Keep it practical, precise, and easy to follow.
+                Do not include any citation markers.
+                """;
         }
 
         if (q.StartsWith("hva er") || q.StartsWith("hva betyr"))
         {
-            return "Answer in Norwegian with a short definition first, then the most important supporting details. Cite sources inline.";
+            return
+                """
+                Answer in Norwegian using this structure when possible:
+
+                Kort svar:
+                Give a short definition or explanation first.
+
+                Viktige detaljer:
+                - List the most important points supported by the sources.
+
+                Keep it short, clear, and factual.
+                Do not include any citation markers.
+                """;
         }
 
-        return "Answer in Norwegian as clearly and directly as possible. If the sources support practical guidance, structure the answer in short bullets or steps. Cite sources inline.";
+        if (q.StartsWith("kan") || q.StartsWith("må") || q.StartsWith("skal"))
+        {
+            return
+                """
+                Answer in Norwegian with a direct answer first.
+
+                If useful, structure the answer like this:
+                Kort svar:
+                ...
+
+                Viktig å huske:
+                - ...
+                - ...
+
+                Keep the answer clear and grounded in the sources.
+                Do not include any citation markers.
+                """;
+        }
+
+        return
+            """
+            Answer in Norwegian as clearly and directly as possible.
+
+            Prefer this structure when helpful:
+            Kort svar:
+            ...
+
+            Viktige punkter:
+            - ...
+            - ...
+
+            If the question is practical, use short steps instead.
+            Do not include any citation markers.
+            """;
     }
 
     public string BuildSourcesBlock(IReadOnlyList<RetrievedChunk> chunks)

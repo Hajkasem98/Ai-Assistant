@@ -6,7 +6,6 @@ using System.Text.Json;
 
 namespace AiAssistant.Api.Infrastructure.Search;
 
-/// Azure AI Search REST client (retrieves documents for RAG)
 public sealed class AzureSearchRestClient : IAzureSearchClient
 {
     private readonly IHttpClientFactory _http;
@@ -20,7 +19,6 @@ public sealed class AzureSearchRestClient : IAzureSearchClient
         _json = json;
     }
 
-    /// Search Azure AI Search and return relevant chunks
     public async Task<IReadOnlyList<RetrievedChunk>> SearchAsync(
         string queryText,
         int topK,
@@ -33,7 +31,6 @@ public sealed class AzureSearchRestClient : IAzureSearchClient
         if (string.IsNullOrWhiteSpace(queryText))
             return Array.Empty<RetrievedChunk>();
 
-        // Read config
         var endpointRaw = Require("AzureSearch:Endpoint");
         var apiKey = Require("AzureSearch:ApiKey");
         var indexName = Require("AzureSearch:IndexName");
@@ -42,12 +39,10 @@ public sealed class AzureSearchRestClient : IAzureSearchClient
         if (string.IsNullOrWhiteSpace(apiVersion))
             apiVersion = "2023-11-01";
 
-        // Semantic search config (better relevance)
         var semanticConfig =
             _config["AzureSearch:SemanticConfiguration"]
             ?? "multimodal-rag-index-ai-assistent-semantic-configuration";
 
-        // Build URL
         var endpoint = endpointRaw.Trim().TrimEnd('/');
         if (!endpoint.Contains(".search.windows.net", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"AzureSearch:Endpoint must be https://<name>.search.windows.net but was: '{endpointRaw}'");
@@ -58,20 +53,17 @@ public sealed class AzureSearchRestClient : IAzureSearchClient
         ub.Query = $"api-version={Uri.EscapeDataString(apiVersion)}";
         var url = ub.Uri.ToString();
 
-        // Clean URL fields
         var effectiveUrlFields = (urlFields ?? Array.Empty<string>())
             .Where(f => !string.IsNullOrWhiteSpace(f))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        // Fields to return from search
         var selectFields = new[] { contentField, titleField, documentIdField }
             .Concat(effectiveUrlFields)
             .Where(f => !string.IsNullOrWhiteSpace(f))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        // 1. Try semantic search (best quality)
         var semanticPayload = new
         {
             search = queryText,
@@ -88,7 +80,6 @@ public sealed class AzureSearchRestClient : IAzureSearchClient
         if (semanticResults.Count > 0)
             return semanticResults;
 
-        // 2. Fallback to simple search
         var simplePayload = new
         {
             search = queryText,
@@ -101,7 +92,6 @@ public sealed class AzureSearchRestClient : IAzureSearchClient
         if (simpleResults.Count > 0)
             return simpleResults;
 
-        //  3. Final fallback: return anything
         var wildcardPayload = new
         {
             search = "*",
@@ -113,7 +103,6 @@ public sealed class AzureSearchRestClient : IAzureSearchClient
             url, apiKey, wildcardPayload, contentField, titleField, effectiveUrlFields, documentIdField, ct);
     }
 
-    // Sends request to Azure Search and parses results
     private async Task<List<RetrievedChunk>> SendAndParseAsync(
         string url,
         string apiKey,
@@ -124,7 +113,6 @@ public sealed class AzureSearchRestClient : IAzureSearchClient
         string documentIdField,
         CancellationToken ct)
     {
-        // Create HTTP request
         using var req = new HttpRequestMessage(HttpMethod.Post, url);
         req.Headers.TryAddWithoutValidation("api-key", apiKey);
         req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -142,8 +130,6 @@ public sealed class AzureSearchRestClient : IAzureSearchClient
                 $"Azure AI Search query failed. URL: {url}. Status: {(int)resp.StatusCode} {resp.ReasonPhrase}. Body: {body}");
 
         using var doc = JsonDocument.Parse(body);
-
-        // Extract "value" array (results)
         if (!doc.RootElement.TryGetProperty("value", out var valueEl) || valueEl.ValueKind != JsonValueKind.Array)
             return new List<RetrievedChunk>();
 
@@ -158,7 +144,6 @@ public sealed class AzureSearchRestClient : IAzureSearchClient
             var title = TryGetString(item, titleField);
             var documentId = TryGetString(item, documentIdField);
 
-            // Get first available URL field
             string? urlVal = null;
             foreach (var f in urlFields)
             {
@@ -169,14 +154,13 @@ public sealed class AzureSearchRestClient : IAzureSearchClient
                     break;
                 }
             }
-            // Add chunk
+
             results.Add(new RetrievedChunk(content, title, urlVal, documentId));
         }
 
         return results;
     }
 
-    /// Safely extract string from JSON field
     private static string? TryGetString(JsonElement obj, string field)
     {
         if (string.IsNullOrWhiteSpace(field)) return null;
@@ -193,7 +177,6 @@ public sealed class AzureSearchRestClient : IAzureSearchClient
         };
     }
 
-    /// Get required config or throw error
     private string Require(string key)
         => _config[key] ?? throw new InvalidOperationException($"Missing configuration: {key}");
 }

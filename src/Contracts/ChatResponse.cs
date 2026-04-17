@@ -1,13 +1,12 @@
-namespace AiAssistant.Api.Contracts;    // This is your API contract layer, Defines what your backend returns to the frontend
-
+namespace AiAssistant.Api.Contracts;
 
 public sealed record ChatResponse(
-    string Answer,                       // The final AI-generated answer
-    IReadOnlyList<SourceHit> Sources    // A list of references used to generate the answer
+    string Answer,
+    IReadOnlyList<SourceHit> Sources
 );
 
-public sealed record SourceHit(     //A single source/document chunk used by the AI
+public sealed record SourceHit(
     string? Title,
-    string? Url,            //SharePoint file
-    string ContentSnippet   //A small extracted piece of text
+    string? Url,
+    string ContentSnippet
 );
