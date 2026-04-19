@@ -12,11 +12,12 @@ import {
     ChevronRight,
     Volume2,
     Pause,
-    Search,
     PanelLeftClose,
     PanelLeftOpen,
     LoaderCircle,
     Plus,
+    Info,
+    X,
 } from "lucide-react";
 
 type Role = "user" | "assistant";
@@ -53,7 +54,7 @@ type ChatSession = {
     messages: Message[];
 };
 
-const STORAGE_KEY = "mesta-ai-chat-history-tailwind-final-v5";
+const STORAGE_KEY = "mesta-ai-chat-history-tailwind-final-v7";
 const DEFAULT_CHAT_TITLE = "Ny chat";
 const MAX_TEXTAREA_HEIGHT = 180;
 
@@ -227,6 +228,7 @@ export default function App() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [composerHeight, setComposerHeight] = useState(132);
+    const [infoOpen, setInfoOpen] = useState(false);
 
     const audioMapRef = useRef<Map<string, HTMLAudioElement>>(new Map());
     const generatingMapRef = useRef<Map<string, boolean>>(new Map());
@@ -293,6 +295,17 @@ export default function App() {
 
         return () => observer.disconnect();
     }, [input, isSending, isDesktop]);
+
+    useEffect(() => {
+        if (!infoOpen) return;
+
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setInfoOpen(false);
+        };
+
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [infoOpen]);
 
     const activeChat = useMemo(
         () => chatSessions.find((chat) => chat.id === activeChatId) ?? null,
@@ -362,6 +375,12 @@ export default function App() {
 
     const applySuggestion = (text: string) => {
         setInput(text);
+        focusComposer();
+    };
+
+    const fillSuggestedQuestion = (text: string) => {
+        setInput(text);
+        setInfoOpen(false);
         focusComposer();
     };
 
@@ -490,20 +509,34 @@ export default function App() {
         }
     };
 
+    const toggleSidebar = () => {
+        if (infoOpen) setInfoOpen(false);
+        setSidebarOpen((prev) => !prev);
+    };
+
     const gridClass = sidebarCollapsed
         ? "lg:grid-cols-[88px_minmax(0,1fr)]"
         : "lg:grid-cols-[300px_minmax(0,1fr)]";
 
     const scrollPaddingBottom = isDesktop ? 96 : composerHeight + 84;
-    const floatingNewChatBottom = isDesktop ? 24 : composerHeight + 20;
-
+    const floatingNewChatBottom = composerHeight + 20;
     return (
         <div className="min-h-screen bg-[#F5F1EA] text-[#292220]">
-            {sidebarOpen && (
+            {(sidebarOpen || infoOpen) && (
                 <button
                     type="button"
-                    className="fixed inset-0 z-30 bg-[#0F173D]/25 lg:hidden"
-                    onClick={() => setSidebarOpen(false)}
+                    className="fixed inset-0 z-30 bg-[#0F173D]/25"
+                    onClick={() => {
+                        setSidebarOpen(false);
+                        setInfoOpen(false);
+                    }}
+                />
+            )}
+
+            {infoOpen && (
+                <InfoModal
+                    onClose={() => setInfoOpen(false)}
+                    onUseExample={fillSuggestedQuestion}
                 />
             )}
 
@@ -532,11 +565,11 @@ export default function App() {
                         <div className="flex items-center gap-3">
                             <button
                                 type="button"
-                                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#D7DDE8] bg-white text-lg text-[#000099] lg:hidden"
-                                onClick={() => setSidebarOpen(true)}
-                                title="Åpne historikk"
+                                className="relative z-50 inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#D7DDE8] bg-white text-lg text-[#000099] lg:hidden"
+                                onClick={toggleSidebar}
+                                title={sidebarOpen ? "Lukk historikk" : "Åpne historikk"}
                             >
-                                <Menu size={20} />
+                                {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
                             </button>
 
                             <div className="hidden text-sm font-medium text-[#000099] sm:block">
@@ -710,18 +743,9 @@ export default function App() {
                     </aside>
 
                     <main className="relative flex min-w-0 flex-col">
-                        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <h1 className="text-[28px] font-semibold tracking-tight text-[#000099]">
-                                    Mesta AI Assistent
-                                </h1>
-                                <p className="mt-1 text-sm text-[#6B625A]">
-                                    Spør om prosedyrer, HMS, inspeksjoner og rapportering.
-                                </p>
-                            </div>
-                        </div>
+           
 
-                        <section className="relative flex min-h-[calc(100vh-220px)] flex-1 flex-col overflow-hidden rounded-[32px] border border-[#E7D8C8] bg-white shadow-[0_10px_30px_rgba(15,23,61,0.04)]">
+                        <section className="relative flex min-h-[calc(100vh-220px)] flex-1 flex-col overflow-visible rounded-[32px] border border-[#E7D8C8] bg-white shadow-[0_10px_30px_rgba(15,23,61,0.04)]">
                             <div
                                 ref={listRef}
                                 className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8"
@@ -749,16 +773,16 @@ export default function App() {
                                                     message.content.trim() === ""
                                                 }
                                             />
-                                        ))}                           
+                                        ))}
                                     </div>
                                 )}
                             </div>
 
-                            {!isEmpty && (
+                            {!isEmpty && !isDesktop && (
                                 <button
                                     type="button"
                                     onClick={startNewChat}
-                                    className="fixed right-4 z-20 inline-flex items-center gap-2 rounded-full border border-[#D7DDE8] bg-white px-4 py-3 text-sm font-semibold text-[#000099] shadow-[0_10px_24px_rgba(15,23,61,0.12)] transition hover:bg-[#F5F8FF] lg:right-8"
+                                    className="fixed right-4 z-20 inline-flex items-center gap-2 rounded-full border border-[#D7DDE8] bg-white px-4 py-3 text-sm font-semibold text-[#000099] shadow-[0_10px_24px_rgba(15,23,61,0.12)] transition hover:bg-[#F5F8FF]"
                                     style={{ bottom: floatingNewChatBottom }}
                                 >
                                     <Plus size={16} />
@@ -768,19 +792,24 @@ export default function App() {
 
                             <div
                                 ref={composerRef}
-                                className="fixed bottom-0 left-0 right-0 z-20 border-t border-[#F0E5D9] bg-white/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-white/85 lg:static lg:border-t lg:bg-white lg:p-4"
-                                style={{
-                                    paddingBottom: isDesktop
-                                        ? 16
-                                        : "max(16px, env(safe-area-inset-bottom))",
-                                }}
+                                className="fixed bottom-0 left-0 right-0 z-20 border-t border-[#F0E5D9] bg-white/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-white/85 lg:sticky lg:bottom-0 lg:left-auto lg:right-auto lg:bg-white lg:border-t lg:p-4
+    "
                             >
                                 <div className="mx-auto w-full max-w-4xl">
-                                    <div className="flex items-end gap-3 rounded-[24px] border border-[#E7D8C8] bg-[#FBF7F2] p-3">
-                                        <div className="flex flex-1 items-start gap-3">
-                                            <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF6FC] text-sm font-semibold text-[#000099]">
-                                                <Search size={18} />
-                                            </div>
+                                    <div className="relative flex items-end gap-3 rounded-[24px] border border-[#E7D8C8] bg-[#FBF7F2] p-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (sidebarOpen) setSidebarOpen(false);
+                                                setInfoOpen(true);
+                                            }}
+                                            className="flex h-11 w-11 items-center justify-center rounded-full border border-[#D7DDE8] bg-white text-[#000099] transition hover:bg-[#F5F8FF]"
+                                            title="Tips for best resultat"
+                                        >
+                                            <Info size={18} />
+                                        </button>
+
+                                        <div className="flex flex-1 items-start gap-3">                        
 
                                             <textarea
                                                 ref={inputRef}
@@ -794,7 +823,7 @@ export default function App() {
                                                 }
                                                 rows={1}
                                                 disabled={isSending}
-                                                className="min-h-[28px] max-h-[180px] w-full resize-none border-none bg-transparent text-[15px] text-[#292220] outline-none placeholder:text-[#8A8077]"
+                                                className="min-h-[28px] max-h-[180px] w-full resize-none border-none bg-transparent m-1 text-[15px] text-[#292220] outline-none placeholder:text-[#8A8077]"
                                             />
                                         </div>
 
@@ -829,14 +858,148 @@ export default function App() {
                                             )}
                                         </button>
                                     </div>
-
-                                    <div className="mt-2 text-center text-xs text-[#8A8077]">
-                                        Enter sender · Shift+Enter ny linje
-                                    </div>
                                 </div>
                             </div>
                         </section>
                     </main>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function InfoModal({
+    onClose,
+    onUseExample,
+}: {
+    onClose: () => void;
+    onUseExample: (text: string) => void;
+}) {
+    const examples = [
+        "Hvordan registrerer jeg et avvik?",
+        "Hva er stegene for å opprette en innkjøpsordre?",
+        "Kan jeg sende inn arbeidsrapport etter fristen?",
+    ];
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F173D]/35 p-4">
+            <div className="w-full max-w-xl rounded-[28px] border border-[#E7D8C8] bg-white shadow-[0_20px_60px_rgba(15,23,61,0.18)]">
+                <div className="flex items-start justify-between gap-4 border-b border-[#F0E5D9] px-5 py-4">
+                    <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[#D7DDE8] bg-[#EEF6FC] text-[#000099]">
+                            <Info size={18} />
+                        </div>
+                        <div>
+                            <div className="text-lg font-semibold text-[#000099]">
+                                Slik får du best svar
+                            </div>             
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="flex h-10 w-10 items-center justify-center rounded-full border border-[#D7DDE8] bg-white text-[#000099] transition hover:bg-[#F5F8FF]"
+                        title="Lukk"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="space-y-5 px-5 py-5">
+                    <div className="rounded-[20px] border border-[#E7D8C8] bg-[#FBF7F2] p-4">
+                        <div className="text-sm font-semibold text-[#000099]">
+                            Best bruk av appen
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-[#6B625A]">
+                            Denne assistenten fungerer best når du spør om konkrete
+                            arbeidsprosesser, rutiner og systembruk. Jo tydeligere
+                            spørsmålet er, desto mer presist blir svaret.
+                        </p>
+                    </div>
+
+                    <div>
+                        <div className="text-sm font-semibold text-[#000099]">
+                            Gode måter å starte et spørsmål på
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {["Hvordan ...", "Hva er ...", "Hva betyr ...", "Kan ...", "Må ...", "Skal ..."].map(
+                                (item) => (
+                                    <span
+                                        key={item}
+                                        className="rounded-full border border-[#D7DDE8] bg-[#F5F8FF] px-3 py-1.5 text-xs font-medium text-[#000099]"
+                                    >
+                                        {item}
+                                    </span>
+                                )
+                            )}
+                        </div>
+                    </div>
+
+                    <div>
+                        <div className="text-sm font-semibold text-[#000099]">
+                            Tips for best resultat
+                        </div>
+                        <div className="mt-2 space-y-2 text-sm leading-6 text-[#6B625A]">
+                            <div className="flex gap-3">
+                                <div className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[#FF6600]" />
+                                <div>Still ett tydelig spørsmål om gangen.</div>
+                            </div>
+                            <div className="flex gap-3">
+                                <div className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[#FF6600]" />
+                                <div>Beskriv oppgaven eller systemet du jobber i.</div>
+                            </div>
+                            <div className="flex gap-3">
+                                <div className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[#FF6600]" />
+                                <div>
+                                    For prosedyrer: spør gjerne{" "}
+                                    <span className="font-medium text-[#292220]">
+                                        “Hvordan ...”
+                                    </span>{" "}
+                                    eller{" "}
+                                    <span className="font-medium text-[#292220]">
+                                        “Hva er stegene for å ...”
+                                    </span>
+                                    .
+                                </div>
+                            </div>
+                            <div className="flex gap-3">
+                                <div className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[#FF6600]" />
+                                <div>
+                                    For begreper og oversikt: bruk{" "}
+                                    <span className="font-medium text-[#292220]">
+                                        “Hva er ...”
+                                    </span>{" "}
+                                    eller{" "}
+                                    <span className="font-medium text-[#292220]">
+                                        “Hva betyr ...”
+                                    </span>
+                                    .
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div className="text-sm font-semibold text-[#000099]">
+                            Eksempler
+                        </div>
+                        <div className="mt-3 space-y-2">
+                            {examples.map((example) => (
+                                <button
+                                    key={example}
+                                    type="button"
+                                    onClick={() => onUseExample(example)}
+                                    className="flex w-full items-center justify-between rounded-[18px] border border-[#E7D8C8] bg-white px-4 py-3 text-left transition hover:bg-[#FBF7F2]"
+                                >
+                                    <span className="text-sm font-medium text-[#292220]">
+                                        {example}
+                                    </span>
+                                    <ChevronRight size={18} className="text-[#000099]" />
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -856,22 +1019,18 @@ function EmptyState({
     const faqItems = [
         {
             title: "Hvordan opprette en innkjøpsordre?",
-            subtitle: "Basert på dokumenter i SharePoint",
             value: "Hvordan opprette en innkjøpsordre?",
         },
         {
             title: "Hvordan registrere avvik?",
-            subtitle: "Basert på dokumenter i SharePoint",
             value: "Hvordan registrere avvik?",
         },
         {
             title: "Hva er de viktigste HMS-kravene?",
-            subtitle: "Basert på dokumenter i SharePoint",
             value: "Hva er de viktigste HMS-kravene?",
         },
         {
             title: `Hva kan du hjelpe meg med, ${firstName}?`,
-            subtitle: "Få en oversikt over funksjoner og bruk",
             value: "Hva kan du hjelpe meg med?",
         },
     ];
@@ -930,7 +1089,6 @@ function EmptyState({
                             <SuggestionCard
                                 key={item.value}
                                 title={item.title}
-                                subtitle={item.subtitle}
                                 onClick={() => handlePick(item.value)}
                                 isActive={selectedQuestion === item.value}
                             />
@@ -944,12 +1102,10 @@ function EmptyState({
 
 function SuggestionCard({
     title,
-    subtitle,
     onClick,
     isActive = false,
 }: {
     title: string;
-    subtitle: string;
     onClick: () => void;
     isActive?: boolean;
 }) {
@@ -981,10 +1137,7 @@ function SuggestionCard({
                     ].join(" ")}
                 >
                     {title}
-                </div>
-                <div className="mt-1 text-xs text-[#6B625A] sm:text-sm">
-                    {subtitle}
-                </div>
+                </div>          
             </div>
 
             <div
