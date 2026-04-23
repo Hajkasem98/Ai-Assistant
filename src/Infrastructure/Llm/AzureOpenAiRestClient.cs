@@ -76,7 +76,8 @@ public sealed class AzureOpenAiRestClient : IEmbeddingClient, IChatCompletionCli
         {
             messages = messages.Select(m => new { role = m.Role, content = m.Content }),
             temperature = 1,
-            max_completion_tokens = 16000
+            max_completion_tokens = 900,
+            stream = true
         };
 
         using var req = new HttpRequestMessage(HttpMethod.Post, url);
@@ -109,7 +110,7 @@ public sealed class AzureOpenAiRestClient : IEmbeddingClient, IChatCompletionCli
         {
             messages = messages.Select(m => new { role = m.Role, content = m.Content }),
             temperature = 1,
-            max_completion_tokens = 16000,
+            max_completion_tokens = 900,
             stream = true
         };
 

@@ -418,7 +418,7 @@ export default function App() {
             const req: ChatRequest = {
                 question: q,
                 messages: history,
-                topK: 5,
+                topK: 4,
             };
 
             let fullText = "";
@@ -554,11 +554,8 @@ export default function App() {
 
                             <div className="min-w-0">
                                 <div className="truncate text-[22px] font-semibold tracking-tight text-[#000099]">
-                                    Mesta
-                                </div>
-                                <div className="text-sm text-[#6B625A]">
-                                    AI Assistent
-                                </div>
+                                    MDS AI Assistent
+                                </div>                         
                             </div>
                         </div>
 
@@ -1007,7 +1004,6 @@ function InfoModal({
 }
 
 function EmptyState({
-    firstName,
     onPick,
 }: {
     firstName: string;
@@ -1022,16 +1018,44 @@ function EmptyState({
             value: "Hvordan opprette en innkjøpsordre?",
         },
         {
+            title: "Hvordan oppsetter oppdragsmaler?",
+            value: "Hvordan oppsetter oppdragsmaler?",
+        },
+        {
+            title: "Hva er praktisk bruk av systemene",
+            value: "Hva er praktisk bruk av systemene",
+        },
+        {
+            title: "Hvordan tilpasse pakkene?",
+            value: "Hvordan tilpasse pakkene?",
+        },
+        {
+            title: "Hva krever manuell behandling?",
+            value: "Hva krever manuell behandling?",
+        },
+        {
+            title: "hva er metode for godkjenning av mengder Mesta?",
+            value: "hva er metode for godkjenning av mengder Mesta?",
+        },
+        {
+            title: "hva er Viktige momenter ved øktbehandling Mesta?",
+            value: "hva er Viktige momenter ved øktbehandling Mesta?",
+        },
+        {
+            title: "Hvordan logger jeg på combo?",
+            value: "Hvordan logger jeg på combo?",
+        },
+        {
+            title: "Beskrivelse under Basert på brukerveiledning i datafangst",
+            value: "Beskrivelse under Basert på brukerveiledning i datafangs",
+        },
+        {
             title: "Hvordan registrere avvik?",
             value: "Hvordan registrere avvik?",
         },
         {
             title: "Hva er de viktigste HMS-kravene?",
             value: "Hva er de viktigste HMS-kravene?",
-        },
-        {
-            title: `Hva kan du hjelpe meg med, ${firstName}?`,
-            value: "Hva kan du hjelpe meg med?",
         },
     ];
 
@@ -1057,8 +1081,7 @@ function EmptyState({
             </h2>
 
             <p className="mt-5 max-w-2xl text-base leading-7 text-[#6B625A] sm:text-lg">
-                Få raske svar basert på interne dokumenter og etablerte
-                arbeidsprosesser i en enkel og oversiktlig portal.
+                Her kan du stille spørsmål om MDS i Mesta
             </p>
 
             <div className="mt-8 w-full max-w-3xl text-left">
@@ -1173,6 +1196,7 @@ function Bubble({
 }) {
     const isUser = role === "user";
     const [isPlaying, setIsPlaying] = useState(false);
+    const [sourcesOpen, setSourcesOpen] = useState(false);
 
     const visibleSources = (sources ?? []).filter(
         (source) => source.title || source.url
@@ -1234,8 +1258,17 @@ function Bubble({
                 return <div key={index} className="h-2" />;
             }
 
+            const normalized = trimmed.toLowerCase().replace(/:$/, "");
+
             const isHeading =
-                trimmed.endsWith(":") &&
+                (
+                    trimmed.endsWith(":") ||
+                    normalized === "kort svar" ||
+                    normalized === "steg for steg" ||
+                    normalized === "viktig å huske" ||
+                    normalized === "viktige punkter" ||
+                    normalized === "viktige detaljer"
+                ) &&
                 trimmed.length < 40 &&
                 !trimmed.startsWith("-") &&
                 !trimmed.startsWith("•") &&
@@ -1334,37 +1367,44 @@ function Bubble({
 
                 {!isLoading && visibleSources.length > 0 && (
                     <div className="mt-6 border-t border-[#F0E5D9] pt-5">
-                        <div className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-[#000099]">
-                            Kilder
-                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setSourcesOpen((prev) => !prev)}
+                            className="inline-flex items-center gap-2 rounded-full border border-[#D7DDE8] bg-[#F5F8FF] px-4 py-2 text-sm font-medium text-[#000099] hover:bg-[#EAF1FF]"
+                        >
+                            <FileText size={16} />
+                            {sourcesOpen ? "Skjul kilder" : `Vis kilder (${visibleSources.length})`}
+                        </button>
 
-                        <div className="space-y-3">
-                            {visibleSources.map((source, index) => (
-                                <div
-                                    key={`${source.url ?? source.title ?? "source"}-${index}`}
-                                    className="rounded-2xl border border-[#E7D8C8] bg-[#FBF7F2] p-4"
-                                >
-                                    <div className="text-sm font-semibold text-[#292220]">
-                                        {source.title || `Kilde ${index + 1}`}
-                                    </div>
-
-                                    {source.url ? (
-                                        <a
-                                            href={source.url}
-                                            target="_blank"
-                                            rel="noreferrer noopener"
-                                            className="mt-2 inline-block text-sm font-medium text-[#000099] hover:text-[#FF6600] hover:underline"
-                                        >
-                                            Åpne i SharePoint
-                                        </a>
-                                    ) : (
-                                        <div className="mt-2 text-sm leading-6 text-[#6B625A]">
-                                            {source.contentSnippet}
+                        {sourcesOpen && (
+                            <div className="mt-4 space-y-3">
+                                {visibleSources.map((source, index) => (
+                                    <div
+                                        key={`${source.url ?? source.title ?? "source"}-${index}`}
+                                        className="rounded-2xl border border-[#E7D8C8] bg-[#FBF7F2] p-4"
+                                    >
+                                        <div className="text-sm font-semibold text-[#292220]">
+                                            {source.title || `Kilde ${index + 1}`}
                                         </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+
+                                        {source.url ? (
+                                            <a
+                                                href={source.url}
+                                                target="_blank"
+                                                rel="noreferrer noopener"
+                                                className="mt-2 inline-block text-sm font-medium text-[#000099] hover:text-[#FF6600] hover:underline"
+                                            >
+                                                Åpne i SharePoint
+                                            </a>
+                                        ) : (
+                                            <div className="mt-2 text-sm leading-6 text-[#6B625A]">
+                                                {source.contentSnippet}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
