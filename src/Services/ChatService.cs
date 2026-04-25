@@ -1,6 +1,7 @@
 using AiAssistant.Api.Contracts;
 using AiAssistant.Api.Infrastructure.Llm;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 
 namespace AiAssistant.Api.Services;
 
@@ -19,23 +20,21 @@ public sealed class ChatService
 
     public async Task<ChatResponse> AskAsync(ChatRequest req, CancellationToken ct)
     {
-        var topK = req.TopK ?? 6;
-        if (topK is < 1 or > 20) topK = 6;
+        var topK = req.TopK ?? 4;
+        if (topK is < 1 or > 20) topK = 4;
 
         var chunks = await _retrieval.RetrieveAsync(req.Question, topK, ct);
         var distinctChunks = DistinctChunks(chunks);
 
-        var system = _prompt.BuildSystemPrompt();
-        var sources = _prompt.BuildSourcesBlock(distinctChunks);
-        var messages = BuildMessages(req, system, sources);
-
+        var messages = BuildMessages(req, distinctChunks);
         var answer = await _chat.CompleteAsync(messages, ct);
 
         if (string.IsNullOrWhiteSpace(answer))
             answer = BuildGroundedFallbackAnswer(req.Question, distinctChunks);
 
-        var src = BuildSourceHits(distinctChunks);
+        answer = CleanAssistantAnswer(answer);
 
+        var src = BuildSourceHits(distinctChunks);
         return new ChatResponse(answer, src);
     }
 
@@ -43,15 +42,13 @@ public sealed class ChatService
         ChatRequest req,
         [EnumeratorCancellation] CancellationToken ct)
     {
-        var topK = req.TopK ?? 6;
-        if (topK is < 1 or > 20) topK = 6;
+        var topK = req.TopK ?? 4;
+        if (topK is < 1 or > 20) topK = 4;
 
         var chunks = await _retrieval.RetrieveAsync(req.Question, topK, ct);
         var distinctChunks = DistinctChunks(chunks);
 
-        var system = _prompt.BuildSystemPrompt();
-        var sources = _prompt.BuildSourcesBlock(distinctChunks);
-        var messages = BuildMessages(req, system, sources);
+        var messages = BuildMessages(req, distinctChunks);
 
         var gotAnyContent = false;
 
@@ -70,8 +67,8 @@ public sealed class ChatService
 
     public async Task<IReadOnlyList<SourceHit>> GetSourcesAsync(ChatRequest req, CancellationToken ct)
     {
-        var topK = req.TopK ?? 6;
-        if (topK is < 1 or > 20) topK = 6;
+        var topK = req.TopK ?? 4;
+        if (topK is < 1 or > 20) topK = 4;
 
         var chunks = await _retrieval.RetrieveAsync(req.Question, topK, ct);
         var distinctChunks = DistinctChunks(chunks);
@@ -79,11 +76,16 @@ public sealed class ChatService
         return BuildSourceHits(distinctChunks);
     }
 
-    private static List<LlmChatMessage> BuildMessages(ChatRequest req, string system, string sources)
+    private List<LlmChatMessage> BuildMessages(ChatRequest req, IReadOnlyList<RetrievedChunk> distinctChunks)
     {
+        var system = _prompt.BuildSystemPrompt();
+        var style = _prompt.BuildAnswerStyleInstruction(req.Question);
+        var sources = _prompt.BuildSourcesBlock(distinctChunks);
+
         var messages = new List<LlmChatMessage>
         {
             new("system", system),
+            new("system", style),
             new("system", "SOURCES:\n" + sources)
         };
 
@@ -100,8 +102,12 @@ public sealed class ChatService
 
         var normalizedQuestion = req.Question.Trim();
         var lastUserMessage = messages.LastOrDefault(m => m.Role == "user");
-        if (lastUserMessage is null || !string.Equals(lastUserMessage.Content.Trim(), normalizedQuestion, StringComparison.Ordinal))
+
+        if (lastUserMessage is null ||
+            !string.Equals(lastUserMessage.Content.Trim(), normalizedQuestion, StringComparison.Ordinal))
+        {
             messages.Add(new("user", req.Question));
+        }
 
         return messages;
     }
@@ -158,10 +164,56 @@ public sealed class ChatService
             .ToList();
     }
 
+    private static string CleanAssistantAnswer(string answer)
+    {
+        if (string.IsNullOrWhiteSpace(answer))
+            return string.Empty;
+
+        var cleaned = answer.Replace("\r\n", "\n").Trim();
+
+        cleaned = NormalizeListFormatting(cleaned);
+
+        cleaned = Regex.Replace(
+            cleaned,
+            @"\n{3,}",
+            "\n\n",
+            RegexOptions.Multiline);
+
+        cleaned = Regex.Replace(
+            cleaned,
+            @"(?is)\n?(kilder|referanser|sources)\s*:\s*.*$",
+            "",
+            RegexOptions.IgnoreCase);
+
+        return cleaned.Trim();
+    }
+    private static string NormalizeListFormatting(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        var normalized = text;
+
+        // Insert line break before list steps like "2. ..." when they are glued to previous text.
+        normalized = Regex.Replace(
+            normalized,
+            @"(?:(?<=[!?;:])|(?:(?<!\d)\.))\s*(?=\d{1,2}\.\s*\p{L})",
+            "\n");
+
+        // Insert line break before bullets when they are glued to previous text.
+        normalized = Regex.Replace(
+            normalized,
+            @"(?:(?<=[.!?;:])|(?<=[\p{L}\)\]]))\s*(?=[\-•]\s+)",
+            "\n");
+
+        return normalized;
+    }
+
+
     private static string BuildGroundedFallbackAnswer(string question, IReadOnlyList<RetrievedChunk> chunks)
     {
         if (chunks.Count == 0)
-            return "Jeg finner ingen relevante kilder akkurat nå. Prøv å omformulere spørsmålet.";
+            return "Jeg finner ingen relevante kilder akkurat nå. Prøv å formulere spørsmålet mer konkret.";
 
         static string Clean(string text)
             => text.Replace("\r", " ").Replace("\n", " ").Trim();
@@ -170,13 +222,13 @@ public sealed class ChatService
             .Select(c => Clean(c.Content))
             .Where(c => !string.IsNullOrWhiteSpace(c))
             .Take(2)
-            .Select(c => c.Length <= 260 ? c : c[..260] + "…")
+            .Select(c => c.Length <= 220 ? c : c[..220] + "…")
             .ToList();
 
         if (highlights.Count == 0)
-            return "Jeg fant relevante kilder, men teksten kunne ikke oppsummeres automatisk. Prøv å omformulere spørsmålet.";
+            return "Jeg fant relevante kilder, men klarte ikke å lage et godt svar automatisk. Prøv å formulere spørsmålet litt mer konkret.";
 
         var joined = string.Join("\n- ", highlights);
-        return $"Jeg fant relevante kilder for spørsmålet \"{question.Trim()}\". Her er det viktigste jeg fant:\n- {joined}";
+        return $"Kort svar:\nJeg fant relevant informasjon, men klarte ikke å lage et fullstendig svar automatisk.\n\nRelevant fra kildene:\n- {joined}";
     }
 }

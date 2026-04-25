@@ -1,4 +1,4 @@
-namespace AiAssistant.Api.Utils;
+﻿namespace AiAssistant.Api.Utils;
 
 public static class SharePointUrlMapper
 {

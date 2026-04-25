@@ -7,148 +7,157 @@ public sealed class PromptBuilder
     private const int MaxChunkChars = 900;
     private const int MaxTotalSourceChars = 4500;
 
-    public string BuildSystemPrompt() =>
-        """
-        You are a helpful assistant answering questions about Mesta work processes and system usage.
+    private static readonly string SystemPrompt = """
+        You are a helpful assistant for Mesta employees.
 
-        Use ONLY the provided sources.
-        Do not use outside knowledge.
-        Do not invent steps, rules, or facts that are not supported by the sources.
+        Answer ONLY from the provided sources.
+        Do NOT use outside knowledge.
+        Do NOT invent steps, rules, permissions, deadlines, or system behavior.
 
-        If the sources clearly support an answer, give the best direct answer in Norwegian.
-        If the sources are incomplete but still useful, give the best possible answer and briefly mention any uncertainty.
-        Only say that you do not know if the sources do not contain enough information to answer at all.
+        Your answer must be:
+        - in clear Norwegian
+        - concise but complete
+        - practical
+        - easy to scan
+        - directly useful for the user
 
-        Ignore irrelevant, duplicated, or weakly related source text.
-
-        Write the answer in clean, natural Norwegian.
-        Do not include citation markers like [S1] or [S2].
-        Do not mention source numbers.
-        Do not add a separate source section.
-        File links are handled by the system.
-
-        Structure answers clearly so they are easy to read in the frontend.
+        Writing rules:
+        - Start with a short direct answer.
+        - For practical/process questions, use step-by-step instructions.
+        - Keep steps short and concrete.
+        - Keep paragraphs very short.
+        - Avoid long introductions and long conclusions.
+        - Avoid repeating the same point.
+        - Use simple wording instead of formal or heavy wording.
+        - Include all important steps, warnings, conditions, and exceptions that are needed to complete the task correctly.
+        - Do not remove critical information only to make the answer shorter.
 
         Preferred structure:
-        - Start with a short direct answer.
-        - Then organize the answer using short section headings when helpful.
-        - For practical questions, use step-by-step instructions.
-        - For overview questions, use short sections or bullet points.
-        - Keep paragraphs short.
-        - Keep the answer concise, but complete enough to be useful.
-
-        Use headings like:
         Kort svar:
-        Steg for steg:
-        Viktig å huske:
+        - 1 to 2 short sentences
 
-        Only include headings that are actually useful for the question.
+        Steg for steg:
+        1. ...
+        2. ...
+        3. ...
+
+        Viktig å huske:
+        - Only include this if there is an important warning, condition, or exception in the sources.
+        - Maximum 3 bullet points.
+
+        Source handling:
+        - Do NOT include citation markers like [S1], [S2], etc.
+        - Do NOT mention source numbers.
+        - Do NOT add a separate source section in the answer.
+        - Do NOT include URLs in the answer.
+        - The frontend handles sources separately.
+
+        If the sources are incomplete but still useful:
+        - Give the best answer you can
+        - Clearly mention uncertainty briefly
+
+        If the sources do not contain enough information:
+        - Say that briefly
+        - Do not guess
         """;
+
+    public string BuildSystemPrompt() => SystemPrompt;
 
     public string BuildAnswerStyleInstruction(string question)
     {
-        var q = (question ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(question))
+            return DefaultInstruction;
+
+        var q = question.Trim().ToLowerInvariant();
 
         if (q.StartsWith("hvordan") || q.Contains("hvordan "))
-        {
-            return
-                """
-                Answer in Norwegian using this structure when possible:
-
-                Kort svar:
-                Give one short direct answer.
-
-                Steg for steg:
-                1. First step
-                2. Next step
-                3. Final step
-
-                Viktig å huske:
-                - Add only important warnings, conditions, or exceptions if the sources support them.
-
-                Keep it practical, precise, and easy to follow.
-                Do not include any citation markers.
-                """;
-        }
+            return HowToInstruction;
 
         if (q.StartsWith("hva er") || q.StartsWith("hva betyr"))
-        {
-            return
-                """
-                Answer in Norwegian using this structure when possible:
-
-                Kort svar:
-                Give a short definition or explanation first.
-
-                Viktige detaljer:
-                - List the most important points supported by the sources.
-
-                Keep it short, clear, and factual.
-                Do not include any citation markers.
-                """;
-        }
+            return DefinitionInstruction;
 
         if (q.StartsWith("kan") || q.StartsWith("må") || q.StartsWith("skal"))
-        {
-            return
-                """
-                Answer in Norwegian with a direct answer first.
+            return YesNoInstruction;
 
-                If useful, structure the answer like this:
-                Kort svar:
-                ...
-
-                Viktig å huske:
-                - ...
-                - ...
-
-                Keep the answer clear and grounded in the sources.
-                Do not include any citation markers.
-                """;
-        }
-
-        return
-            """
-            Answer in Norwegian as clearly and directly as possible.
-
-            Prefer this structure when helpful:
-            Kort svar:
-            ...
-
-            Viktige punkter:
-            - ...
-            - ...
-
-            If the question is practical, use short steps instead.
-            Do not include any citation markers.
-            """;
+        return DefaultInstruction;
     }
+
+    private static readonly string HowToInstruction = """
+        Format this answer in Norwegian like this:
+
+        Kort svar:
+        One short practical summary.
+
+        Steg for steg:
+        1. First action
+        2. Next action
+        3. Continue with all important actions from the sources
+
+        Viktig å huske:
+        - Include important warnings, conditions, or exceptions from the sources
+        - Maximum 3 short bullet points
+
+        Keep the answer concise, but complete enough for the user to perform the task correctly.
+        Prefer 4–7 steps when the sources support it.
+        Do not skip important operational details just to make the answer shorter.
+        """;
+
+    private static readonly string DefinitionInstruction = """
+        Format this answer in Norwegian like this:
+
+        Kort svar:
+        Give a short explanation first.
+
+        Viktige punkter:
+        - 2 to 4 short bullet points only if useful
+
+        Keep it simple, factual, and short.
+        """;
+
+    private static readonly string YesNoInstruction = """
+        Format this answer in Norwegian like this:
+
+        Kort svar:
+        Start with a direct yes/no or clear answer.
+
+        Viktig å huske:
+        - Add only the most important condition(s)
+        - Maximum 2 short bullet points
+
+        Keep it short and clear.
+        """;
+
+    private static readonly string DefaultInstruction = """
+        Format this answer in Norwegian with:
+        - a short direct answer first
+        - then short bullet points or short steps only if helpful
+
+        Keep it concise, simple, and easy to read.
+        """;
 
     public string BuildSourcesBlock(IReadOnlyList<RetrievedChunk> chunks)
     {
         var sb = new StringBuilder();
         var usedChars = 0;
 
-        for (int i = 0; i < chunks.Count; i++)
+        for (int i = 0; i < chunks.Count && usedChars < MaxTotalSourceChars; i++)
         {
-            if (usedChars >= MaxTotalSourceChars) break;
+            var chunk = chunks[i];
+            var content = chunk.Content ?? string.Empty;
 
-            var c = chunks[i];
-            var content = c.Content ?? string.Empty;
-
+            // Trim chunk to max size
             if (content.Length > MaxChunkChars)
                 content = content[..MaxChunkChars] + "…";
 
+            // Trim to remaining total budget
             var remaining = MaxTotalSourceChars - usedChars;
-            if (remaining <= 0) break;
-
             if (content.Length > remaining)
                 content = content[..remaining] + "…";
 
-            sb.AppendLine($"[S{i + 1}] {c.Title ?? "(untitled)"}");
+            sb.AppendLine($"[S{i + 1}] {chunk.Title ?? "(untitled)"}");
 
-            if (!string.IsNullOrWhiteSpace(c.Url))
-                sb.AppendLine($"URL: {c.Url}");
+            if (!string.IsNullOrWhiteSpace(chunk.Url))
+                sb.AppendLine($"URL: {chunk.Url}");
 
             sb.AppendLine(content);
             sb.AppendLine();
