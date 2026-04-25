@@ -976,27 +976,6 @@ function InfoModal({
                             </div>
                         </div>
                     </div>
-
-                    <div>
-                        <div className="text-sm font-semibold text-[#000099]">
-                            Eksempler
-                        </div>
-                        <div className="mt-3 space-y-2">
-                            {examples.map((example) => (
-                                <button
-                                    key={example}
-                                    type="button"
-                                    onClick={() => onUseExample(example)}
-                                    className="flex w-full items-center justify-between rounded-[18px] border border-[#E7D8C8] bg-white px-4 py-3 text-left transition hover:bg-[#FBF7F2]"
-                                >
-                                    <span className="text-sm font-medium text-[#292220]">
-                                        {example}
-                                    </span>
-                                    <ChevronRight size={18} className="text-[#000099]" />
-                                </button>
-                            ))}
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -1249,7 +1228,14 @@ function Bubble({
     };
 
     const renderStructuredContent = (text: string) => {
-        const lines = text.split("\n");
+        const normalizeStructuredText = (raw: string) =>
+            raw
+                .replace(/\r\n/g, "\n")
+                .replace(/(?:(?<=[!?;:])|(?:(?<!\d)\.))\s*(?=\d{1,2}\.\s*\p{L})/gu, "\n")
+                .replace(/(?:(?<=[.!?;:])|(?<=[\p{L})\]]))\s*(?=[-•]\s+)/gu, "\n")
+                .replace(/\n{3,}/g, "\n\n");
+
+        const lines = normalizeStructuredText(text).split("\n");
 
         return lines.map((line, index) => {
             const trimmed = line.trim();
@@ -1273,9 +1259,8 @@ function Bubble({
                 !trimmed.startsWith("-") &&
                 !trimmed.startsWith("•") &&
                 !/^\d+\./.test(trimmed);
-
-            const isNumberedStep = /^\d+\.\s/.test(trimmed);
-            const isBullet = /^[-•]\s/.test(trimmed);
+            const isNumberedStep = /^\d+\.\s*/.test(trimmed);
+            const isBullet = /^[-•]\s*/.test(trimmed);
 
             if (isHeading) {
                 return (
@@ -1289,7 +1274,7 @@ function Bubble({
             }
 
             if (isNumberedStep) {
-                const match = trimmed.match(/^(\d+)\.\s(.*)$/);
+                const match = trimmed.match(/^(\d+)\.\s*(.*)$/);
                 const stepNumber = match?.[1] ?? "";
                 const stepText = match?.[2] ?? trimmed;
 
@@ -1306,8 +1291,7 @@ function Bubble({
             }
 
             if (isBullet) {
-                const bulletText = trimmed.replace(/^[-•]\s/, "");
-
+                const bulletText = trimmed.replace(/^[-•]\s*/, "");
                 return (
                     <div key={index} className="flex items-start gap-3">
                         <div className="mt-[10px] h-2 w-2 shrink-0 rounded-full bg-[#FF6600]" />
@@ -1397,8 +1381,10 @@ function Bubble({
                                                 Åpne i SharePoint
                                             </a>
                                         ) : (
-                                            <div className="mt-2 text-sm leading-6 text-[#6B625A]">
-                                                {source.contentSnippet}
+                                            <div className="mt-2 space-y-1">
+                                                <div className="text-sm text-[#B42318] font-medium">
+                                                    Denne kilden har ingen direkte lenke
+                                                </div>                                     
                                             </div>
                                         )}
                                     </div>

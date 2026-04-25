@@ -171,6 +171,8 @@ public sealed class ChatService
 
         var cleaned = answer.Replace("\r\n", "\n").Trim();
 
+        cleaned = NormalizeListFormatting(cleaned);
+
         cleaned = Regex.Replace(
             cleaned,
             @"\n{3,}",
@@ -185,6 +187,28 @@ public sealed class ChatService
 
         return cleaned.Trim();
     }
+    private static string NormalizeListFormatting(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        var normalized = text;
+
+        // Insert line break before list steps like "2. ..." when they are glued to previous text.
+        normalized = Regex.Replace(
+            normalized,
+            @"(?:(?<=[!?;:])|(?:(?<!\d)\.))\s*(?=\d{1,2}\.\s*\p{L})",
+            "\n");
+
+        // Insert line break before bullets when they are glued to previous text.
+        normalized = Regex.Replace(
+            normalized,
+            @"(?:(?<=[.!?;:])|(?<=[\p{L}\)\]]))\s*(?=[\-•]\s+)",
+            "\n");
+
+        return normalized;
+    }
+
 
     private static string BuildGroundedFallbackAnswer(string question, IReadOnlyList<RetrievedChunk> chunks)
     {
@@ -205,6 +229,6 @@ public sealed class ChatService
             return "Jeg fant relevante kilder, men klarte ikke å lage et godt svar automatisk. Prøv å formulere spørsmålet litt mer konkret.";
 
         var joined = string.Join("\n- ", highlights);
-        return $"Kort svar:\nJeg fant dette i relevante kilder:\n- {joined}";
+        return $"Kort svar:\nJeg fant relevant informasjon, men klarte ikke å lage et fullstendig svar automatisk.\n\nRelevant fra kildene:\n- {joined}";
     }
 }
