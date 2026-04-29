@@ -79,13 +79,11 @@ public sealed class ChatService
     private List<LlmChatMessage> BuildMessages(ChatRequest req, IReadOnlyList<RetrievedChunk> distinctChunks)
     {
         var system = _prompt.BuildSystemPrompt();
-        var style = _prompt.BuildAnswerStyleInstruction(req.Question);
         var sources = _prompt.BuildSourcesBlock(distinctChunks);
 
         var messages = new List<LlmChatMessage>
         {
             new("system", system),
-            new("system", style),
             new("system", "SOURCES:\n" + sources)
         };
 
