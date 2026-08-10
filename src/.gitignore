@@ -2,6 +2,7 @@
 # Visual Studio
 .vs/
 
+
 # .NET build files
 bin/
 obj/
@@ -17,6 +18,10 @@ frontend/build/
 # Environment variables
 .env.*
 
+# App secrets
+/appsettings.json
+!appsettings.Example.json
+
 # Logs
 *.log
 
@@ -24,5 +29,5 @@ frontend/build/
 .DS_Store
 Thumbs.db
 
-# for secrutity, to not include api keys
-appsettings.json
+/.vs/
+.vs/

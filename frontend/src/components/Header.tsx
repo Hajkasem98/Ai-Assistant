@@ -1,15 +1,28 @@
 import { Menu, X } from "lucide-react";
 import mestaLogo from "../assets/Mesta_logo.svg";
 
+/*
+This component is used as the top header/navigation area of the application. It shows:
+
+-Mesta logo
+-Application name: MDS AI Assistent
+-A sidebar toggle button on small screens
+-A greeting with the user’s first name
+-A circular user avatar with the first letter of the user’s name
+
+In simple words, this component creates the top bar of the chat application.
+*/
+
+type HeaderProps = {
+    firstName: string;
+    sidebarOpen: boolean;
+    onToggleSidebar: () => void;
+};
 export function Header({
-  firstName,
-  sidebarOpen,
-  onToggleSidebar,
-}: {
-  firstName: string;
-  sidebarOpen: boolean;
-  onToggleSidebar: () => void;
-}) {
+    firstName,
+    sidebarOpen,
+    onToggleSidebar,
+}: HeaderProps) {
   return (
     <header className="sticky top-4 z-40 rounded-[28px] border border-[#E7D8C8] bg-white/95 px-5 py-4 shadow-[0_10px_30px_rgba(15,23,61,0.05)] backdrop-blur supports-[backdrop-filter]:bg-white/90">
       <div className="flex items-center justify-between gap-4">

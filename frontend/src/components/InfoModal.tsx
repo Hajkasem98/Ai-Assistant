@@ -1,5 +1,10 @@
 import { Info, X } from "lucide-react";
 
+/*
+This component shows a modal window with information about how the user can get the best
+answers from the AI assistant. In simple words, this file creates an information popup 
+that helps users understand how to ask better questions.
+ */
 export function InfoModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F173D]/35 p-4">

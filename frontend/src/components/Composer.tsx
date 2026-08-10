@@ -1,5 +1,28 @@
 import { Info, LoaderCircle, Mic, Send } from "lucide-react";
 
+/*
+The Composer component is the message input area at the bottom of the chat application. 
+It allows the user to:
+
+-Write a question or follow-up message.
+-Send the message.
+-Use microphone input for speech-to-text.
+-Open an info/tips panel.
+-See a loading spinner while the assistant is generating an answer.
+
+This component does not manage the chat logic itself. Instead, it receives state and 
+functions from the parent component through props.
+
+The parent component controls:
+
+-The input value.
+-Whether the app is sending.
+-Whether the send button should be enabled.
+-What happens when the user clicks send.
+-What happens when the user clicks the microphone.
+-What happens when the user presses a key inside the textarea
+
+ */
 export function Composer({
   input,
   setInput,

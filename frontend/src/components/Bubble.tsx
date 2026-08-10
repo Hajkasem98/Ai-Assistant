@@ -4,6 +4,23 @@ import { textToSpeech } from "../services/speechService";
 import type { Role, SourceHit } from "../types/chat";
 import { SourcesList } from "./SourcesList";
 
+/*
+Bubble is used to display one chat message in the UI
+
+The component supports two types of messages:
+
+-User message:
+    Displayed on the right side, uses an orange background and shows only the message text.
+
+-Assistant message:
+    Displayed on the left side, uses a white card layout, can show Loading state while the answer is being generated,
+    Structured formatted answer text, text-to-speech button, and list of sources.
+
+The file also contains a helper function called renderStructuredContent. This function takes plain text
+from the assistant and formats it visually. For example, it detects headings, numbered steps,
+and bullet points, then renders them with better styling.
+ */
+
 export function Bubble({
   id,
   role,

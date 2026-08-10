@@ -3,6 +3,18 @@ import { ChevronRight } from "lucide-react";
 import mestaLogo from "../assets/Mesta_logo.svg";
 import { SuggestionCard } from "./SuggestionCard";
 
+/*
+The component is used when the chat page is empty, before the user has asked a question. It shows:
+
+-Mesta logo
+-A welcome title: “Hvordan kan jeg hjelpe deg i dag?”
+-A short description: “Her kan du stille spørsmål om MDS i Mesta”
+-A collapsible FAQ section
+-A list of suggested questions
+-When the user clicks a question, the selected question is sent back through the onPick function
+
+In simple words, this component gives the user a nice start screen with ready-made question suggestions.
+ */
 export function EmptyState({
   onPick,
 }: {

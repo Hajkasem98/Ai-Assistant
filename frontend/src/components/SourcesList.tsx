@@ -1,6 +1,20 @@
 import { FileText } from "lucide-react";
 import type { SourceHit } from "../types/chat";
 
+/*
+This component is responsible for showing the sources used by the AI assistant 
+when generating an answer. These sources can be documents from SharePoint or other links.
+
+The component does three main things:
+
+-It receives a list of sources from the parent component.
+-It filters out sources that do not have a title or a URL.
+-It displays a button that allows the user to show or hide the sources.
+
+When the source list is open, each source is shown as a small card. If the source has a URL, 
+the user can open it in SharePoint. If the source does not have a URL, the component shows 
+a warning message saying that there is no direct link.
+ */
 export function SourcesList({
   sources,
   sourcesOpen,

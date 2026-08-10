@@ -1,7 +1,28 @@
-import { PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
+import { LogOut, PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
 import type { ChatSession } from "../types/chat";
 import { formatTime } from "../utils/chatUtils";
 
+/*
+The sidebar is used to show chat history and navigation options in the AI assistant application.
+
+The component shows:
+
+-A New chat button
+-A button to collapse or expand the sidebar on large screens
+-A list of previous chat sessions
+-Chat groups, for example by date such as today, yesterday, or older
+-Active chat highlighting
+-Delete button for each chat
+-Logout button
+-A smaller collapsed version of the chat list
+
+There is also a helper component called CollapsedChatList.
+This component is used when the sidebar is collapsed and only shows small buttons 
+with the first letter of each chat title.
+
+In simple words, this file creates the left sidebar where the user can start a new chat, 
+open old chats, delete chats, collapse the sidebar, or log out.
+ */
 export function Sidebar({
   chatSessions,
   activeChatId,
@@ -12,6 +33,8 @@ export function Sidebar({
   onToggleCollapsed,
   onSelectChat,
   onDeleteChat,
+  onLogout,
+  isLoggingOut,
 }: {
   chatSessions: ChatSession[];
   activeChatId: string | null;
@@ -22,13 +45,15 @@ export function Sidebar({
   onToggleCollapsed: () => void;
   onSelectChat: (chatId: string) => void;
   onDeleteChat: (chatId: string) => void;
+  onLogout: () => void;
+  isLoggingOut: boolean;
 }) {
   return (
     <aside
       className={[
-        "z-40 rounded-[28px] border border-[#E7D8C8] bg-white shadow-[0_10px_30px_rgba(15,23,61,0.04)] transition-all duration-300",
-        "lg:sticky lg:top-[108px] lg:block lg:max-h-[calc(100vh-132px)]",
-        sidebarOpen ? "fixed inset-y-24 left-4 w-[88vw] max-w-[320px] overflow-hidden" : "hidden lg:block",
+        "z-40 flex flex-col rounded-[28px] border border-[#E7D8C8] bg-white shadow-[0_10px_30px_rgba(15,23,61,0.04)] transition-all duration-300",
+        "lg:sticky lg:top-[108px] lg:flex lg:max-h-[calc(100vh-132px)]",
+        sidebarOpen ? "fixed inset-y-24 left-4 w-[88vw] max-w-[320px] overflow-hidden" : "hidden lg:flex",
         sidebarCollapsed ? "lg:w-[88px]" : "",
       ].join(" ")}
     >
@@ -55,7 +80,7 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className={`overflow-y-auto p-4 ${sidebarCollapsed ? "px-2" : ""} lg:max-h-[calc(100vh-220px)]`}>
+        <div className={`flex-1 overflow-y-auto p-4 ${sidebarCollapsed ? "px-2" : ""} lg:max-h-[calc(100vh-220px)]`}>
         {sidebarCollapsed ? (
           <CollapsedChatList chatSessions={chatSessions} activeChatId={activeChatId} onSelectChat={onSelectChat} />
         ) : groupedChats.length === 0 ? (
@@ -117,6 +142,21 @@ export function Sidebar({
           ))
         )}
       </div>
+          <div className={`border-t border-[#F0E5D9] p-4 ${sidebarCollapsed ? "hidden px-2 lg:block" : ""}`}>
+              <button
+                  type="button"
+                  onClick={onLogout}
+                  disabled={isLoggingOut}
+                  className={[
+                      "flex items-center justify-center gap-2 rounded-2xl border border-[#D7DDE8] bg-white text-sm font-semibold text-[#000099] transition hover:border-[#000099] hover:bg-[#F5F8FF] disabled:cursor-not-allowed disabled:opacity-60",
+                      sidebarCollapsed ? "h-11 w-full px-0" : "w-full px-4 py-3",
+                  ].join(" ")}
+                  title="Logg ut"
+              >
+                  <LogOut size={18} />
+                  {!sidebarCollapsed && <span>{isLoggingOut ? "Logger ut" : "Logg ut"}</span>}
+              </button>
+          </div>
     </aside>
   );
 }

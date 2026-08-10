@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+// The purpose of this hook is to check whether the current screen size should be considered desktop size.
 export function useIsDesktop() {
   const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 1024);
 

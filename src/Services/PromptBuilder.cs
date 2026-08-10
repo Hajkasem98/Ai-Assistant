@@ -2,6 +2,22 @@ using System.Text;
 
 namespace AiAssistant.Api.Services;
 
+/*
+ This class has two main responsibilities:
+
+   1 Build the system prompt
+    → instructions that control how the AI behaves
+   2 Build the sources block
+    → the retrieved document chunks that the AI is allowed to use
+
+MaxChunkChars and MaxTotalSourceChars are used to control how much source text is included. Each chunk is 
+limited to 900 characters, and the total source content is limited to 4500 characters.
+
+We normally retrieve 4 chunks. Each chunk is limited to 900 characters, so the actual chunk content
+is up to 3600 characters. In addition, the sources block includes metadata like title and URL. 
+The total limit of 4500 is a safety limit for content only, and also gives room if more than 4 chunks are passed later.
+ */
+
 public sealed class PromptBuilder
 {
     private const int MaxChunkChars = 900;
@@ -120,32 +136,31 @@ public sealed class PromptBuilder
         - Do NOT include links
         - Do NOT include a source section
         - The system will handle sources separately
-
-        At the VERY END of your response, add:
-
-        SOURCES_USED:1,2,3
-
-        Rules:
-        - Include ONLY sources actually used
-        - If none were useful:
-        SOURCES_USED:none
         """;
 
-
+    // This method converts retrieved search chunks into formatted text that gets inserted into the prompt.
+    // Builds the source block that will be sent together with the user question.
+    // The sources come from Azure AI Search through RetrievalService.
     public string BuildSourcesBlock(IReadOnlyList<RetrievedChunk> chunks)
     {
         var sb = new StringBuilder();
         var usedChars = 0;
 
+        // Go through each retrieved chunk while we are still under the total limit.
         for (int i = 0; i < chunks.Count && usedChars < MaxTotalSourceChars; i++)
         {
             var chunk = chunks[i];
+            // Use empty string if Content is null.This prevents null reference errors.
             var content = chunk.Content ?? string.Empty;
 
+            // Limit each single chunk to MaxChunkChars.
             if (content.Length > MaxChunkChars)
                 content = content[..MaxChunkChars] + "…";
 
+            // Calculate how many characters are still allowed in the total source block.
             var remaining = MaxTotalSourceChars - usedChars;
+
+            // If this chunk is larger than the remaining allowed space, cut it so the total source block stays within the limit.
             if (content.Length > remaining)
                 content = content[..remaining] + "…";
 
@@ -163,7 +178,7 @@ public sealed class PromptBuilder
         return sb.ToString();
     }
 }
-
+// Represents one retrieved document chunk from the search index.
 public sealed record RetrievedChunk(
     string Content,
     string? Title,

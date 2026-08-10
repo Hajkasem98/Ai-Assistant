@@ -13,7 +13,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
         if (accounts.length > 0) {
             instance.setActiveAccount(accounts[0]);
-        }
+    }
     }, [accounts, inProgress, instance]);
     return <>{children}</>
 }

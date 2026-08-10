@@ -1,5 +1,19 @@
 import { ChevronRight, FileText } from "lucide-react";
 
+/*
+The component represents one clickable suggestion card in the user interface. It is most likely 
+used to show suggested questions, documents, or predefined options that the user can click.
+
+The card contains:
+
+-A document icon on the left.
+-A title in the middle.
+-A chevron arrow on the right.
+
+The component also supports an active state. When isActive is true, the card gets a different 
+background, border, ring, and text color. This makes it clear to the user which suggestion 
+is currently selected or active.
+ */
 export function SuggestionCard({
   title,
   onClick,

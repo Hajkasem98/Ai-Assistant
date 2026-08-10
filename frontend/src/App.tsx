@@ -22,7 +22,7 @@ import {
 } from "./utils/chatUtils";
 
 export default function App() {
-    const { accounts } = useMsal();
+    const { accounts, instance } = useMsal();
     const user = accounts[0];
     const firstName = user?.name?.split(" ")[0] || "der";
     const isDesktop = useIsDesktop();
@@ -35,6 +35,7 @@ export default function App() {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [composerHeight, setComposerHeight] = useState(132);
     const [infoOpen, setInfoOpen] = useState(false);
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
 
     const audioMapRef = useRef<Map<string, HTMLAudioElement>>(new Map());
     const generatingMapRef = useRef<Map<string, boolean>>(new Map());
@@ -258,7 +259,15 @@ export default function App() {
         if (infoOpen) setInfoOpen(false);
         setSidebarOpen((prev) => !prev);
     };
+    const logout = () => {
+        if (isLoggingOut) return;
 
+        setIsLoggingOut(true);
+        instance.logoutRedirect({
+            account: user,
+            postLogoutRedirectUri: window.location.origin,
+        });
+    };
     const gridClass = sidebarCollapsed ? "lg:grid-cols-[88px_minmax(0,1fr)]" : "lg:grid-cols-[300px_minmax(0,1fr)]";
     const scrollPaddingBottom = isDesktop ? 96 : composerHeight + 84;
     const floatingNewChatBottom = composerHeight + 20;
@@ -295,6 +304,8 @@ export default function App() {
                             setSidebarOpen(false);
                         }}
                         onDeleteChat={deleteChat}
+                        onLogout={logout}
+                        isLoggingOut={isLoggingOut}
                     />
 
                     <ChatWindow

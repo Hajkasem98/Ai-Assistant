@@ -3,6 +3,18 @@ import type { Message } from "../types/chat";
 import { Bubble } from "./Bubble";
 import { EmptyState } from "./EmptyState";
 
+/*
+The purpose of this component is to display the main chat area of the application. 
+It decides what should be shown inside the chat window:
+
+-If there are no messages, it shows the EmptyState component.
+-If there are messages, it shows a list of chat bubbles using the Bubble component.
+-On mobile, it shows a floating Ny chat button.
+-It also renders children, which is probably used for the input field at the bottom of the chat.
+
+This component does not handle the logic for sending messages itself. Instead, it receives data
+and functions from a parent component through props.
+ */
 export function ChatWindow({
   messages,
   isEmpty,
