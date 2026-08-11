@@ -1,23 +1,30 @@
-// file made by SmDev Sm-Oslomet
-import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk";
+import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk"; // SM-Dev
 
-const speechKey = import.meta.env.VITE_SPEECH_KEY as string;
-const speechRegion = import.meta.env.VITE_SPEECH_REGION as string;
+async function getSpeechToken() {
+    const base = import.meta.env.VITE_API_BASE_URL;
+    const res = await fetch(`${base}/api/Chat/speech-token`);
 
-// Speech to text
-export const speechToText = (): Promise<string> => {
+    if (!res.ok) {
+        throw new Error("Failed to fetch speech token")
+    }
+
+    const data = await res.json();
+    console.log("Speech token response:", data);
+    if (!data.token || data.token - length < 100) {
+        throw new Error("Invalid token form backend");
+    }
+    return data;
+}
+
+// ---------- SPEECH TO TEXT ----------
+export const speechToText = async (): Promise<string> => {
+    const { token, region } = await getSpeechToken();
+
     return new Promise((resolve, reject) => {
-        if (!speechKey || !speechRegion) {
-            reject ("Missing Skeep Key or Speech Region");
-            return;
-        }
+        const speechConfig = SpeechSDK.SpeechConfig.fromAuthorizationToken(token, region);
+        speechConfig.authorizationToken = token;
 
-        const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-            speechKey,
-            speechRegion
-        );
-
-        speechConfig.speechRecognitionLanguage = "nb-NO";
+        speechConfig.speechRecognitionLanguage = "nb-NO"; // or en-US
 
         const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
         const recognizer = new SpeechSDK.SpeechRecognizer(
@@ -25,39 +32,12 @@ export const speechToText = (): Promise<string> => {
             audioConfig
         );
 
-        SpeechSDK.Recognizer.enableTelemetry(true); // for testing
-        recognizer.recognizing = (s, e) => {
-        console.log("RECOGNIZING:", e.result.text);
-    };
-
-    recognizer.recognized = (s, e) => {// for testing
-    console.log("RECOGNIZED:", e.result.text);
-    console.log("REASON:", e.result.reason);
-    };
-
-    recognizer.canceled = (s, e) => {
-    console.error("CANCELED:", e.errorDetails);
-    console.error("CANCEL REASON:", e.reason);
-    };
-
-    recognizer.sessionStarted = () => { 
-    console.log("SESSION STARTED");
-    };
-
-    recognizer.sessionStopped = () => { // for testing
-    console.log("SESSION STOPPED");
-    };
-
         recognizer.recognizeOnceAsync(
             (result) => {
-                if (result.reason === SpeechSDK.ResultReason.RecognizedSpeech){
+                if (result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
                     resolve(result.text);
                 } else {
-                    reject({ // for testing
-                        reason: result.reason,
-                        text: result.text,
-                        errorDetauls: result.errorDetails,
-                    });
+                    reject(result.errorDetails);
                 }
                 recognizer.close();
             },
@@ -69,34 +49,25 @@ export const speechToText = (): Promise<string> => {
     });
 };
 
-// Text to speech
+// ---------- TEXT TO SPEECH ----------
+export const textToSpeech = async (text: string): Promise<string> => {
 
-export const textToSpeech = (text: string): Promise<string> => {
-    return new Promise((resolve,reject) => {
-        if (!speechKey || !speechRegion){
-            reject("Missing speech key or speech region");
-            return;
-        }
+    const { token, region } = await getSpeechToken(); // speech key endpoint returns a token with speech key
 
-        const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-            speechKey,
-            speechRegion
-        );
+    return new Promise((resolve, reject) => {
 
-        speechConfig.speechSynthesisVoiceName = "nb-NO-FinnNeural"; // female voice: nb-NO-PernilleNeural 
+        const speechConfig = SpeechSDK.SpeechConfig.fromAuthorizationToken(token, region); // pulls speech key and region through the tokenization from the speech key endpoint
+        speechConfig.authorizationToken = token;
+        speechConfig.speechSynthesisVoiceName = "nb-NO-FinnNeural"; // Man's voice, Norwegian
 
-        const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig);
+        const audioConfig = null;
+        const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
 
         synthesizer.speakTextAsync(
             text,
             (result) => {
-                if (
-                    result.reason ===
-                    SpeechSDK.ResultReason.SynthesizingAudioCompleted
-                ) {
-                    const blob = new Blob([result.audioData], {
-                        type: "audio/wav",
-                    });
+                if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+                    const blob = new Blob([result.audioData], { type: "audio/wav", });
                     const url = URL.createObjectURL(blob);
                     resolve(url);
                 } else {

@@ -1,9 +1,9 @@
-import {msalInstance, loginRequest} from "../auth/msalConfig";
+import { msalInstance, loginRequest } from "../auth/msalConfig";
 
 export async function callApi(url: string, options: RequestInit = {}) {
     const account = msalInstance.getActiveAccount();
 
-    if(!account){
+    if (!account) {
         throw new Error("No active account");
     }
 

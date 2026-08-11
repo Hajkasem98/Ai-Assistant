@@ -3,6 +3,7 @@ using AiAssistant.Api.Utils;
 
 namespace AiAssistant.Api.Services;
 
+// Service responsible for retrieving relevant document chunks from Azure AI Search.
 public sealed class RetrievalService
 {
     private readonly IAzureSearchClient _search;
@@ -14,11 +15,12 @@ public sealed class RetrievalService
         _config = config;
     }
 
+    // Retrieves the most relevant chunks for a user query.
     public async Task<IReadOnlyList<RetrievedChunk>> RetrieveAsync(string query, int topK, CancellationToken ct)
     {
         var contentField = _config["AzureSearch:ContentField"] ?? "content_text";
         var titleField = _config["AzureSearch:TitleField"] ?? "document_title";
-        var documentIdField = _config["AzureSearch:DocumentIdField"] ?? "text_document_id";
+        var documentIdField = _config["AzureSearch:DocumentIdField"] ?? "content_id";
 
         var urlFieldsRaw = _config["AzureSearch:UrlField"] ?? "sharepoint_url,content_path";
         var urlFields = urlFieldsRaw

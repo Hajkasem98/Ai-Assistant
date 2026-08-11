@@ -1,13 +1,13 @@
 namespace AiAssistant.Api.Contracts;
 
-/// <summary>
-/// Stateless by default. For multi-turn chat without a database,
-/// send the last N messages (role: system|user|assistant).
-/// </summary>
+//  This file defines the request models sent from the frontend to the backend.
+
+//  This is the main request object used by the chat API.
 public sealed record ChatRequest(
     string Question,
     IReadOnlyList<ChatMessageDto>? Messages = null,
     int? TopK = null
 );
 
+// Represents a single message in the conversation history.
 public sealed record ChatMessageDto(string Role, string Content);

@@ -2,6 +2,22 @@ using System.Text;
 
 namespace AiAssistant.Api.Services;
 
+/*
+ This class has two main responsibilities:
+
+   1 Build the system prompt
+    → instructions that control how the AI behaves
+   2 Build the sources block
+    → the retrieved document chunks that the AI is allowed to use
+
+MaxChunkChars and MaxTotalSourceChars are used to control how much source text is included. Each chunk is 
+limited to 900 characters, and the total source content is limited to 4500 characters.
+
+We normally retrieve 4 chunks. Each chunk is limited to 900 characters, so the actual chunk content
+is up to 3600 characters. In addition, the sources block includes metadata like title and URL. 
+The total limit of 4500 is a safety limit for content only, and also gives room if more than 4 chunks are passed later.
+ */
+
 public sealed class PromptBuilder
 {
     private const int MaxChunkChars = 900;
@@ -9,146 +25,149 @@ public sealed class PromptBuilder
 
     public string BuildSystemPrompt() =>
         """
-        You are a helpful assistant answering questions about Mesta work processes and system usage.
+        You are an AI assistant for Mesta employees.
 
-        Use ONLY the provided sources.
-        Do not use outside knowledge.
-        Do not invent steps, rules, or facts that are not supported by the sources.
+        You MUST follow these rules strictly.
 
-        If the sources clearly support an answer, give the best direct answer in Norwegian.
-        If the sources are incomplete but still useful, give the best possible answer and briefly mention any uncertainty.
-        Only say that you do not know if the sources do not contain enough information to answer at all.
+        ----------------------------------
+        SOURCE RULES (CRITICAL)
+        ----------------------------------
+        - Use ONLY the provided sources.
+        - Do NOT use outside knowledge.
+        - Do NOT guess or invent information.
+        - Do NOT invent steps, rules, permissions, deadlines, or system behavior.
 
-        Ignore irrelevant, duplicated, or weakly related source text.
+        ----------------------------------
+        ANSWER GOAL
+        ----------------------------------
+        Your answer must be:
+        - in clear Norwegian
+        - concise but COMPLETE
+        - practical and directly usable
+        - easy to scan
 
-        Write the answer in clean, natural Norwegian.
-        Do not include citation markers like [S1] or [S2].
-        Do not mention source numbers.
-        Do not add a separate source section.
-        File links are handled by the system.
+        Do NOT make the answer too short if important steps are missing.
 
-        Structure answers clearly so they are easy to read in the frontend.
+        ----------------------------------
+        ANSWER FORMAT (STRICT)
+        ----------------------------------
 
-        Preferred structure:
-        - Start with a short direct answer.
-        - Then organize the answer using short section headings when helpful.
-        - For practical questions, use step-by-step instructions.
-        - For overview questions, use short sections or bullet points.
-        - Keep paragraphs short.
-        - Keep the answer concise, but complete enough to be useful.
-
-        Use headings like:
+        1) If the question contains "hvordan":
+   
         Kort svar:
-        Steg for steg:
-        Viktig å huske:
+        - 1-2 short practical sentence
 
-        Only include headings that are actually useful for the question.
+        Steg for steg:
+        - Give short step-by-step instructions  
+
+        Viktig å huske (ONLY if supported by sources):
+        - Max 2 short bullet points
+
+        Rules:
+        - Add all steps if available
+        - Steps must be concrete and only based on the sources      
+        - Do NOT skip important steps
+        - Steps must be actionable
+
+        ----------------------------------
+
+        2) If the question starts with "hva er" or "hva betyr":
+
+        Kort svar:
+        - Short explanation
+
+        Viktige punkter (optional):
+        - 2–4 short bullet points
+
+        ----------------------------------
+
+        3) If the question starts with "kan", "må", or "skal":
+
+        Kort svar:
+        - Start with clear yes/no or direct answer
+
+        Viktig å huske:
+        - Max 2 essential conditions from sources
+
+        ----------------------------------
+
+        4) Otherwise:
+
+        Kort svar:
+        - Direct answer
+
+        - Add short bullets or steps ONLY if useful
+
+        ----------------------------------
+        WRITING STYLE
+        ----------------------------------
+        - Very short paragraphs
+        - No introductions
+        - No conclusions
+        - No repetition
+        - Simple wording
+        - Only include what helps the user complete the task
+
+        ----------------------------------
+        MISSING OR WEAK SOURCES
+        ----------------------------------
+
+        If sources contain partial information:
+        - Answer as much as possible
+        - Add one short sentence about uncertainty
+
+        If sources do NOT contain enough information:
+        - Say:
+        "Kildene inneholder ikke nok informasjon til å svare sikkert."
+        - Do NOT guess
+
+        ----------------------------------
+        CONFLICTING SOURCES
+        ----------------------------------
+        - Prefer the clearest and most specific source
+        - If conflict cannot be resolved:
+        - Mention it briefly
+        - Do NOT guess
+
+        ----------------------------------
+        SOURCE HANDLING (IMPORTANT)
+        ----------------------------------
+        - Do NOT mention source numbers in the answer
+        - Do NOT include links
+        - Do NOT include a source section
+        - The system will handle sources separately
         """;
 
-    public string BuildAnswerStyleInstruction(string question)
-    {
-        var q = (question ?? string.Empty).Trim().ToLowerInvariant();
-
-        if (q.StartsWith("hvordan") || q.Contains("hvordan "))
-        {
-            return
-                """
-                Answer in Norwegian using this structure when possible:
-
-                Kort svar:
-                Give one short direct answer.
-
-                Steg for steg:
-                1. First step
-                2. Next step
-                3. Final step
-
-                Viktig å huske:
-                - Add only important warnings, conditions, or exceptions if the sources support them.
-
-                Keep it practical, precise, and easy to follow.
-                Do not include any citation markers.
-                """;
-        }
-
-        if (q.StartsWith("hva er") || q.StartsWith("hva betyr"))
-        {
-            return
-                """
-                Answer in Norwegian using this structure when possible:
-
-                Kort svar:
-                Give a short definition or explanation first.
-
-                Viktige detaljer:
-                - List the most important points supported by the sources.
-
-                Keep it short, clear, and factual.
-                Do not include any citation markers.
-                """;
-        }
-
-        if (q.StartsWith("kan") || q.StartsWith("må") || q.StartsWith("skal"))
-        {
-            return
-                """
-                Answer in Norwegian with a direct answer first.
-
-                If useful, structure the answer like this:
-                Kort svar:
-                ...
-
-                Viktig å huske:
-                - ...
-                - ...
-
-                Keep the answer clear and grounded in the sources.
-                Do not include any citation markers.
-                """;
-        }
-
-        return
-            """
-            Answer in Norwegian as clearly and directly as possible.
-
-            Prefer this structure when helpful:
-            Kort svar:
-            ...
-
-            Viktige punkter:
-            - ...
-            - ...
-
-            If the question is practical, use short steps instead.
-            Do not include any citation markers.
-            """;
-    }
-
+    // This method converts retrieved search chunks into formatted text that gets inserted into the prompt.
+    // Builds the source block that will be sent together with the user question.
+    // The sources come from Azure AI Search through RetrievalService.
     public string BuildSourcesBlock(IReadOnlyList<RetrievedChunk> chunks)
     {
         var sb = new StringBuilder();
         var usedChars = 0;
 
-        for (int i = 0; i < chunks.Count; i++)
+        // Go through each retrieved chunk while we are still under the total limit.
+        for (int i = 0; i < chunks.Count && usedChars < MaxTotalSourceChars; i++)
         {
-            if (usedChars >= MaxTotalSourceChars) break;
+            var chunk = chunks[i];
+            // Use empty string if Content is null.This prevents null reference errors.
+            var content = chunk.Content ?? string.Empty;
 
-            var c = chunks[i];
-            var content = c.Content ?? string.Empty;
-
+            // Limit each single chunk to MaxChunkChars.
             if (content.Length > MaxChunkChars)
                 content = content[..MaxChunkChars] + "…";
 
+            // Calculate how many characters are still allowed in the total source block.
             var remaining = MaxTotalSourceChars - usedChars;
-            if (remaining <= 0) break;
 
+            // If this chunk is larger than the remaining allowed space, cut it so the total source block stays within the limit.
             if (content.Length > remaining)
                 content = content[..remaining] + "…";
 
-            sb.AppendLine($"[S{i + 1}] {c.Title ?? "(untitled)"}");
+            sb.AppendLine($"[S{i + 1}] {chunk.Title ?? "(untitled)"}");
 
-            if (!string.IsNullOrWhiteSpace(c.Url))
-                sb.AppendLine($"URL: {c.Url}");
+            if (!string.IsNullOrWhiteSpace(chunk.Url))
+                sb.AppendLine($"URL: {chunk.Url}");
 
             sb.AppendLine(content);
             sb.AppendLine();
@@ -159,7 +178,7 @@ public sealed class PromptBuilder
         return sb.ToString();
     }
 }
-
+// Represents one retrieved document chunk from the search index.
 public sealed record RetrievedChunk(
     string Content,
     string? Title,
