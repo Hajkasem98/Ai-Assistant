@@ -1,0 +1,17 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# .NET build files
+bin/
+obj/
+
+# Node
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
