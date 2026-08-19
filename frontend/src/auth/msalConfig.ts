@@ -3,10 +3,13 @@
 
 import { PublicClientApplication } from "@azure/msal-browser";
 
+const clientId = import.meta.env.VITE_AAD_CLIENT_ID as string;
+const tenantId = import.meta.env.VITE_AAD_TENANT_ID as string;
+
 export const msalConfig = {
     auth: {
-        clientId: "c200fe56-57e2-4fc1-86ac-654e4b79b528",
-        authority: "https://login.microsoftonline.com/413fb44d-30bd-4e36-b5d4-ee61e6b32030",
+        clientId,
+        authority: `https://login.microsoftonline.com/${tenantId}`,
         redirectUri: window.location.origin
     },
     cache: {
@@ -16,7 +19,7 @@ export const msalConfig = {
 };
 
 export const loginRequest = {
-    scopes: ["api://c200fe56-57e2-4fc1-86ac-654e4b79b528/access_as_user"]
+    scopes: [`api://${clientId}/access_as_user`]
 };
 
 export const msalInstance = new PublicClientApplication(msalConfig);

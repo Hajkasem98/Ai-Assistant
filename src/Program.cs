@@ -8,14 +8,20 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 var corsPolicyName = "Frontend";
 
+// Local dev origins are always allowed; production origins (e.g. the deployed
+// Static Web App URL) come from configuration via "Cors:AllowedOrigins".
+var localOrigins = new[] { "http://localhost:5173", "http://localhost:5174" };
+var configuredOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+var allowedOrigins = localOrigins.Concat(configuredOrigins).Distinct().ToArray();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(corsPolicyName, policy =>
     {
-        policy.WithOrigins("http://localhost:5173", "http://localhost:5174", "https://black-mud-04ce3db03.6.azurestaticapps.net")
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
-              .WithExposedHeaders("*"); // SMDev addition for tts 
+              .WithExposedHeaders("*"); // SMDev addition for tts
     });
 });
 builder.Services.AddEndpointsApiExplorer();
@@ -28,6 +34,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IChatCompletionClient, AzureOpenAiRestClient>();
 builder.Services.AddSingleton<IAzureSearchClient, AzureSearchRestClient>();
 
+builder.Services.AddSingleton<SharePointUrlMapper>();
 builder.Services.AddSingleton<PromptBuilder>();
 builder.Services.AddSingleton<RetrievalService>();
 builder.Services.AddSingleton<ChatService>();

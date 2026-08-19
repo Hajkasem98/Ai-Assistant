@@ -1,6 +1,10 @@
 
 # Visual Studio
 .vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
 
 
 # .NET build files
@@ -29,5 +33,3 @@ frontend/build/
 .DS_Store
 Thumbs.db
 
-/.vs/
-.vs/

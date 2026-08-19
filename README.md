@@ -100,14 +100,24 @@ Fyll inn tomme felt:
     "UrlField": "sharepoint_url,content_path",
     "DocumentIdField": "text_document_id"
   },
+  "SharePoint": {
+    "BlobPrefix": "https://<lagringskonto>.blob.core.windows.net/<container>/<sti>/",
+    "Host": "https://<din-tenant>.sharepoint.com",
+    "LibraryPage": "/sites/<ditt-nettsted>/<ditt-dokumentbibliotek>/Forms/AllItems.aspx",
+    "RootPath": "/sites/<ditt-nettsted>/<ditt-dokumentbibliotek>/<rotmappe>",
+    "ViewId": "<sharepoint-visnings-id>"
+  },
   "Speech": {
     "Key": "<valgfritt>",
     "Region": "<valgfritt, f.eks. norwayeast>"
+  },
+  "Cors": {
+    "AllowedOrigins": [ "https://<din-static-web-app>.azurestaticapps.net" ]
   }
 }
 ```
 
-> **Merk:** Feltnavn for søkeindeksen (`ContentField`, `TitleField` osv.) må samsvare med din faktiske indeksstruktur.
+> **Merk:** Feltnavn for søkeindeksen (`ContentField`, `TitleField` osv.) må samsvare med din faktiske indeksstruktur. `SharePoint`-seksjonen er valgfri – uten den returneres kildenes originale URL uendret (ingen mapping til SharePoint-visning).
 
 ### Frontend – miljøvariabler
 
@@ -115,6 +125,8 @@ Lag filen `frontend/.env.local`:
 
 ```env
 VITE_API_BASE_URL=https://localhost:5001
+VITE_AAD_CLIENT_ID=<din-azure-ad-klient-id>
+VITE_AAD_TENANT_ID=<din-azure-ad-tenant-id>
 ```
 
 For produksjon settes `VITE_API_BASE_URL` i GitHub Actions-workflowen (se [Deployment](#deployment)).
@@ -169,7 +181,7 @@ Returnerer et fullstendig svar (ikke-streamet).
   "sources": [
     {
       "title": "Overtidsregistrering — Rapporter",
-      "url": "https://mesta.sharepoint.com/...",
+      "url": "https://<your-tenant>.sharepoint.com/...",
       "contentSnippet": "Overtid registreres ved å..."
     }
   ]
@@ -294,7 +306,7 @@ Frontenden deployes automatisk via GitHub Actions ved push til `main`. Workflowe
 
 Konfigurer følgende secret i GitHub-repoet:
 
-- `AZURE_STATIC_WEB_APPS_API_TOKEN_BLACK_MUD_04CE3DB03`
+- `AZURE_STATIC_WEB_APPS_API_TOKEN`
 
 ### Backend – Azure Container Apps
 

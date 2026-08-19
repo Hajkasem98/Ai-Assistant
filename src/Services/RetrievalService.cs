@@ -8,11 +8,13 @@ public sealed class RetrievalService
 {
     private readonly IAzureSearchClient _search;
     private readonly IConfiguration _config;
+    private readonly SharePointUrlMapper _sharePointUrlMapper;
 
-    public RetrievalService(IAzureSearchClient search, IConfiguration config)
+    public RetrievalService(IAzureSearchClient search, IConfiguration config, SharePointUrlMapper sharePointUrlMapper)
     {
         _search = search;
         _config = config;
+        _sharePointUrlMapper = sharePointUrlMapper;
     }
 
     // Retrieves the most relevant chunks for a user query.
@@ -35,7 +37,7 @@ public sealed class RetrievalService
             .Select(c => new RetrievedChunk(
                 c.Content,
                 c.Title,
-                SharePointUrlMapper.ToSharePointUrl(c.Url),
+                _sharePointUrlMapper.ToSharePointUrl(c.Url),
                 c.DocumentId))
             .ToList();
     }
